@@ -38,7 +38,7 @@ instance Show Atom where
     show (Binary bn v (ST.Just a)) = show bn ++ "_" ++ show v ++ "_" ++ show a
 
 data SuiteInfo = SuiteInfo {
-    atoms :: [Atom],
+    atoms :: S.Set Atom,
     sourceNames :: Map SourceName [Atom],
     binaryNames :: Map (BinName, Arch) [Atom],
     builds :: Map Atom [Atom],

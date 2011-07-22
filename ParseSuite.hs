@@ -90,7 +90,7 @@ parseSuite config dir = do
             ]
 
     return $ SuiteInfo
-        (S.toList sourceAtoms ++ binaryAtoms)
+        (sourceAtoms `S.union` S.fromList binaryAtoms)
         sourceNames
         binaryNames
         builds
