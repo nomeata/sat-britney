@@ -43,10 +43,10 @@ clause2CNF idx (Implies a as _) = [ reorder (-ai: ais) ]
 clause2CNF idx (Not a _) = [ [-ai] ]
     where ai = M.findIndex a idx + 1
 
-formatCNF :: M.Map a () -> CNF -> String
-formatCNF idx cnf =
+formatCNF :: CNF -> String
+formatCNF cnf =
     "c LitSat CNF generator\n" ++
-    "p cnf " ++ show (M.size idx) ++ " " ++ show (length cnf) ++ "\n" ++
+    "p cnf " ++ show (maximum (map abs (concat cnf))) ++ " " ++ show (length cnf) ++ "\n" ++
     concatMap (\l -> unwords (map show l) ++ " 0\n") cnf
 
 parseCNF :: String -> CNF
@@ -57,8 +57,21 @@ parseCNF str =
 
 runPicosat :: (Show a, Ord a) => M.Map a () -> CNF2Clause a -> IO (Either [Clause a] (S.Set a))
 runPicosat idx cnf = do
-    let cnfString = formatCNF idx (M.keys cnf)
+    result <- runPicosatCNF (M.keys cnf)
+    case result of
+        Left core -> do
+            let coreClauses = map (\disj -> cnf ! disj) $ core
+            return (Left coreClauses)
+        Right vars -> do
+            let atoms = [ atom | i <- vars, i > 0, -- We only return the true variables
+                                 let (atom,_) = M.elemAt (i-1) idx
+                        ]
+            return (Right (S.fromList atoms))
 
+runPicosatCNF :: CNF -> IO (Either CNF [Int])
+runPicosatCNF cnf = do
+    let cnfString = formatCNF cnf
+ 
     (coreInFd, coreOutFd) <- createPipe
     coreIn <- fdToHandle coreInFd
 
@@ -76,18 +89,12 @@ runPicosat idx cnf = do
     case result of
         "s UNSATISFIABLE" -> do
             core <- parseCNF <$> hGetContents coreIn
-            let coreClauses = map (\disj -> cnf ! disj) $ core
-            return (Left coreClauses)
+            return (Left core)
         "s SATISFIABLE" -> do
             satvarsS <- hGetLine hout
-            let atoms = case words satvarsS of 
-                 "v":ints@(_:_) | last ints == "0" -> 
-                    [ atom |
-                        i <- read <$> init ints,
-                        i > 0, -- We only return the true variables
-                        let (atom,_) = M.elemAt (i-1) idx
-                    ]
+            let vars = case words satvarsS of 
+                 "v":ints@(_:_) | last ints == "0" -> read <$> init ints
                  _ -> error $ "Cannot parse picosat SAT output: " ++ satvarsS
-            return (Right (S.fromList atoms))
+            return (Right vars)
         s -> do
             error $ "Cannot parse picostat status output: " ++ s
