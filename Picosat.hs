@@ -52,35 +52,32 @@ formatCNF idx cnf =
 parseCNF :: String -> CNF
 parseCNF str =
     map (init . map read . words) $
-    dropWhile (\l -> null l || head l `elem` "cps") $
+    dropWhile (\l -> null l || head l `elem` "cp") $
     lines str
 
 runPicosat :: (Show a, Ord a) => M.Map a () -> CNF2Clause a -> IO (Either [Clause a] (S.Set a))
 runPicosat idx cnf = do
     let cnfString = formatCNF idx (M.keys cnf)
 
+    (coreInFd, coreOutFd) <- createPipe
+    coreIn <- fdToHandle coreInFd
+
     (Just hint, Just hout, _, _) <- createProcess $
-        (proc "picosat" [])
+        (proc "picosat.trace" ["-c", "/proc/self/fd/" ++ show coreOutFd])
         { std_in = CreatePipe
         , std_out = CreatePipe
         }
+
+    closeFd coreOutFd
     hPutStr hint cnfString
     hClose hint
     
     result <- hGetLine hout
     case result of
         "s UNSATISFIABLE" -> do
-            (Just hint, Just hout, _, _) <- createProcess $
-                (proc "picomus" ["-","-"])
-                { std_in = CreatePipe
-                , std_out = CreatePipe
-                }
-            hPutStr hint cnfString
-            hClose hint
-            core <- parseCNF <$> hGetContents hout
+            core <- parseCNF <$> hGetContents coreIn
             let coreClauses = map (\disj -> cnf ! disj) $ core
             return (Left coreClauses)
-
         "s SATISFIABLE" -> do
             satvarsS <- hGetLine hout
             let atoms = case words satvarsS of 
