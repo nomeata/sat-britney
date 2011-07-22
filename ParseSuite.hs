@@ -4,7 +4,8 @@ import System.FilePath
 import Data.Functor
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Text.ParserCombinators.Parsec hiding (SourceName)
+import Text.Parsec
+import Text.Parsec.ByteString
 import Data.List
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
@@ -13,7 +14,7 @@ import System.IO
 
 import Debian.Version.ByteString
 import Debian.Control.ByteString
-import Debian.Relation.ByteString
+import Debian.Relation.Common
 
 import Types
 
@@ -47,7 +48,7 @@ parseSuite config dir = do
             let Just archS = fieldValue "Architecture" para,
             let arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS),
             let atom = Binary (BinName pkg) version arch,
-            let depends = maybe [] (either (error.show) id . parseRelations) $
+            let depends = maybe [] (either (error.show) id . parseDependency) $
                                 fieldValue "Depends" para,
             let provides = [
                     ((BinName (BS.pack provide), providedArch), [atom]) |
@@ -100,9 +101,104 @@ parseSuite config dir = do
         newerSources
 
 
-parseProvides str = parse pProvides (BS.unpack str) (BS.unpack str)
+parseDependency :: BS.ByteString -> Either ParseError Dependency
+parseDependency str = parse pRelations (BS.unpack str) str
 
-pProvides :: CharParser () [String]
+type RelParser a = Text.Parsec.ByteString.Parser a
+
+-- "Correct" dependency lists are separated by commas, but sometimes they
+-- are omitted and it is possible to parse relations without them.
+pRelations :: RelParser Dependency
+pRelations = do -- rel <- sepBy pOrRelation (char ',')
+		rel <- many pOrRelation
+                eof
+                return rel
+
+withInput :: RelParser a -> RelParser (a, BS.ByteString)
+withInput p = do
+    input1 <- getInput
+    ret <- p
+    input2 <- getInput
+    return (ret, BS.take (BS.length input1 - BS.length input2) input1)
+
+pOrRelation :: RelParser DepDisj
+pOrRelation = do skipMany (char ',' <|> whiteChar)
+                 rel <- withInput (sepBy1 pRelation (char '|'))
+                 skipMany (char ',' <|> whiteChar)
+                 return rel
+
+whiteChar = oneOf [' ','\t','\n']
+
+pRelation :: RelParser DepRel
+pRelation =
+    do skipMany whiteChar
+       pkgName <- many1 (noneOf [' ',',','|','\t','\n','('])
+       skipMany whiteChar
+       mVerReq <- pMaybeVerReq
+       skipMany whiteChar
+       mArch <- pMaybeArch
+       return $ DepRel (BinName (BS.pack pkgName)) mVerReq mArch
+
+pMaybeVerReq :: RelParser (Maybe VersionReq)
+pMaybeVerReq =
+    do char '('
+       skipMany whiteChar
+       op <- pVerReq
+       skipMany whiteChar
+       version <- many1 (noneOf [' ',')','\t','\n'])
+       skipMany whiteChar
+       char ')'
+       return $ Just (op (parseDebianVersion version))
+    <|>
+    do return $ Nothing
+
+pVerReq =
+    do char '<'
+       (do char '<' <|> char ' ' <|> char '\t'
+	   return $ SLT
+        <|>
+        do char '='
+	   return $ LTE)
+    <|>
+    do string "="
+       return $ EEQ
+    <|>
+    do char '>'
+       (do char '='
+ 	   return $ GRE
+        <|>
+        do char '>' <|> char ' ' <|> char '\t'
+	   return $ SGR)
+
+pMaybeArch :: RelParser (Maybe ArchitectureReq)
+pMaybeArch =
+    do char '['
+       (do archs <- pArchExcept
+	   char ']'
+           skipMany whiteChar
+	   return (Just (ArchExcept archs))
+	<|>
+	do archs <- pArchOnly
+	   char ']'
+           skipMany whiteChar
+	   return (Just (ArchOnly archs))
+	)
+    <|>
+    return Nothing
+
+-- Some packages (e.g. coreutils) have architecture specs like [!i386
+-- !hppa], even though this doesn't really make sense: once you have
+-- one !, anything else you include must also be (implicitly) a !.
+pArchExcept :: RelParser [String]
+pArchExcept = sepBy (char '!' >> many1 (noneOf [']',' '])) (skipMany1 whiteChar)
+
+pArchOnly :: RelParser [String]
+pArchOnly = sepBy (many1 (noneOf [']',' '])) (skipMany1 whiteChar)
+
+
+parseProvides str = parse pProvides (BS.unpack str) str
+
+pProvides :: Parser [String]
 pProvides = do rel <- many pPkgName
                eof
                return rel
@@ -111,5 +207,3 @@ pPkgName = do skipMany (char ',' <|> whiteChar)
               pkgName <- many1 (noneOf [' ',',','|','\t','\n','('])
               skipMany (char ',' <|> whiteChar)
               return pkgName
-
-whiteChar = oneOf [' ','\t','\n']

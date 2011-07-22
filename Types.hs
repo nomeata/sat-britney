@@ -37,13 +37,20 @@ instance Show Atom where
     show (Binary bn v ST.Nothing)  = show bn ++ "_" ++ show v ++ "_all"
     show (Binary bn v (ST.Just a)) = show bn ++ "_" ++ show v ++ "_" ++ show a
 
+data DepRel = DepRel !BinName !(Maybe VersionReq) !(Maybe ArchitectureReq)
+		deriving Eq
+
+type DepDisj = ([DepRel], ByteString)
+
+type Dependency = [DepDisj]
+
 data SuiteInfo = SuiteInfo {
     atoms :: S.Set Atom,
     sourceNames :: Map SourceName [Atom],
     binaryNames :: Map (BinName, Arch) [Atom],
     builds :: Map Atom [Atom],
     builtBy :: Map Atom Atom,
-    depends :: Map Atom Relations,
+    depends :: Map Atom Dependency,
     provides :: Map (BinName, Arch) [Atom],
     newerSources :: Map Atom [Atom]
     }

@@ -28,9 +28,9 @@ transitionRules config unstable testing =
         length pkgs > 1
     ] ++
     -- Forth rule: Dependencies
-    [Implies atom (nub deps) ("the package depends on it.") |
+    [Implies atom (nub deps) ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
         (atom@(Binary _ _ arch),depends) <- M.toList dependsUnion,
-        disjunction <- depends,
+        (disjunction, reason) <- depends,
         let deps = concatMap (resolve arch) disjunction
     ] ++
     -- Fifth rule: release architectures ought to all migrate
@@ -56,15 +56,15 @@ transitionRules config unstable testing =
 
         buildsOnlyUnstable = M.difference (builds unstable) (builds testing)
 
-        resolve mbArch (Rel name mbVerReq mbArchReq) =
+        resolve mbArch (DepRel name mbVerReq mbArchReq) =
             [ atom |
                 atom@(Binary pkg version _) <- M.findWithDefault [] 
-                    (BinName (BS.pack name), arch) binariesUnion,
+                    (name, arch) binariesUnion,
                 checkVersionReq mbVerReq (Just version)
             ] ++ 
             if isJust mbVerReq then [] else 
             [ atom |
-                atom <- M.findWithDefault [] (BinName(BS.pack name), arch) providesUnion
+                atom <- M.findWithDefault [] (name, arch) providesUnion
             ]
           where arch = ST.fromMaybe (archForAll config) mbArch 
     
