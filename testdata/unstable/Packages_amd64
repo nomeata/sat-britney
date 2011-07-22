@@ -1,0 +1,26 @@
+Package: bin-A
+Version: 0.2+b1
+Source: src-A (0.2)
+Architecture: amd64
+Depends: bin-B, bin2-A
+
+Package: bin2-A
+Version: 0.2
+Architecture: all
+Source: src-A (0.2)
+
+Package: bin3-A
+Version: 0.2
+Source: src-A
+Architecture: all
+
+Package: bin-renamed-B
+Version: 0.1
+Source: src-B (0.1)
+Architecture: amd64
+Depends: bin3-A (>= 0.2)
+Provides: bin-B
+
+Package: pkg-C
+Architecture: amd64
+Version: 0.1
