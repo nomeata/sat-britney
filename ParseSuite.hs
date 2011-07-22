@@ -9,6 +9,7 @@ import Data.List
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
+import System.IO
 
 import Debian.Version.ByteString
 import Debian.Control.ByteString
@@ -17,7 +18,7 @@ import Debian.Relation.ByteString
 import Types
 
 myParseControl file = do
-    putStrLn $ "Reading file " ++ file
+    hPutStrLn stderr $ "Reading file " ++ file
     control <- parseControlFromFile file >>=
         either (error . show) (return . unControl)
     return control
@@ -35,7 +36,7 @@ parseSuite config dir = do
 
     binaries <- concat <$>
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
-    putStrLn "Done reading input files."
+    hPutStrLn stderr "Done reading input files."
 
     let (binaryAtoms, binaryDepends, binaryProvides, builtByList) = unzip4 [
             (atom, (atom, depends), provides, (atom, sourceAtom)) |
