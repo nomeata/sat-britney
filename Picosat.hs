@@ -24,11 +24,11 @@ allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 
 type CNF = [Conj]
 type Conj = [Int]
-type CNF2Clause a = M.Map Conj (Clause a)
+type CNF2Clause a = M.Map Conj [Clause a]
 
 clauses2CNF :: Ord a => M.Map a () -> [Clause a] -> CNF2Clause a
-clauses2CNF idx clauses = M.fromList
-    [ (conj, clause) | clause <- clauses , conj <- clause2CNF idx clause ]
+clauses2CNF idx clauses = M.fromListWith (++)
+    [ (conj, [clause]) | clause <- clauses , conj <- clause2CNF idx clause ]
 
 reorder = sortBy (compare `on` abs)
 
@@ -55,13 +55,15 @@ parseCNF str =
     dropWhile (\l -> null l || head l `elem` "cp") $
     lines str
 
+cnf2Clause :: CNF2Clause a -> CNF -> [Clause a]
+cnf2Clause cnf = concatMap (\disj -> cnf ! disj) 
+
 runPicosat :: (Show a, Ord a) => M.Map a () -> CNF2Clause a -> IO (Either [Clause a] (S.Set a))
 runPicosat idx cnf = do
     result <- runPicosatCNF (M.keys cnf)
     case result of
         Left core -> do
-            let coreClauses = map (\disj -> cnf ! disj) $ core
-            return (Left coreClauses)
+            return (Left (cnf2Clause cnf core))
         Right vars -> do
             let atoms = [ atom | i <- vars, i > 0, -- We only return the true variables
                                  let (atom,_) = M.elemAt (i-1) idx
@@ -91,10 +93,32 @@ runPicosatCNF cnf = do
             core <- parseCNF <$> hGetContents coreIn
             return (Left core)
         "s SATISFIABLE" -> do
-            satvarsS <- hGetLine hout
-            let vars = case words satvarsS of 
-                 "v":ints@(_:_) | last ints == "0" -> read <$> init ints
+            satvarsS <- hGetContents hout
+            let ls = map (\l ->
+                        if not (null l) && head l == 'v'
+                        then drop 2 l
+                        else error "Cannot parse picosat SAT output: " ++ show l
+                    ) $ lines satvarsS
+            let vars = case concatMap words ls of 
+                 ints@(_:_) | last ints == "0" -> read <$> init ints
                  _ -> error $ "Cannot parse picosat SAT output: " ++ satvarsS
             return (Right vars)
         s -> do
             error $ "Cannot parse picostat status output: " ++ s
+
+-- Takes a CNF and removes clauses (and returns them) until it becomes
+-- satisfiable. The first argument gives the CNFs to relax
+relaxer :: S.Set Conj -> CNF -> IO CNF
+relaxer relaxable = go 
+  where go cnf = do
+            ret <- runPicosatCNF cnf
+            case ret of
+                Left mus -> do
+                    case find (`S.member` relaxable) mus of
+                        Just remove -> (remove:) <$> go (remove `delete` cnf)
+                        Nothing -> do
+                            putStrLn "No relaxable clause in MUS:"
+                            putStr (formatCNF mus)
+                            return []
+                Right _ -> do
+                    return []

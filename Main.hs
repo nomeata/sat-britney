@@ -18,6 +18,7 @@ import TransRules
 import Types
 import PrettyPrint
 import Picosat
+import LitSat
 
 config = Config all all i386
   where all = [ i386 {- , amd64 -} ]
@@ -33,18 +34,29 @@ main = do
 runBritney dir = do
     unstable <- parseSuite config (dir </> "unstable")
     testing <- parseSuite config (dir </> "testing")
-    let rules = transitionRules config unstable testing
-    -- print (vcat (map pp rules))
-    let idx = allAtoms rules
-    let cnf = clauses2CNF idx rules
-    --sequence_ [ print (text (unwords (map show l)) <+> char ':' <+> pp clause ) |
-    --    (l, clause) <- M.toList cnf]
+
+    let (rulesT, relaxable) = transitionRules config testing testing
+        idxT = allAtoms rulesT
+        cnfT = clauses2CNF idxT rulesT
+        relaxableClauses = clauses2CNF idxT relaxable
+    
+    removeCnf <- relaxer (M.keysSet relaxableClauses) (M.keys cnfT)
+    let removeClause = cnf2Clause cnfT removeCnf
+    putStrLn $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
+    print (nest 4 (vcat (map pp removeClause)))
+
+    let (rules, _) = transitionRules config unstable testing
+        cleanedRules = rules `removeRelated` removeClause
+        idx = allAtoms cleanedRules
+        cnf = clauses2CNF idx cleanedRules
+
     result <- runPicosat idx cnf
     case result of 
         Left clauses -> do
             putStrLn "No suitable set of packages could be determined,"
             putStrLn "because the following requirements conflict:"
-            print (vcat (map pp clauses))
+            -- print (vcat (map pp clauses))
+            mapM_ print clauses
         Right newAtoms -> do
             printDifference (atoms testing) newAtoms
     
@@ -61,3 +73,8 @@ printDifference old new = do
 printUsage = do
     name <- getProgName
     putStrLn ("Usage: " ++ name ++ " dir_to_data/")
+
+removeRelated l1 l2 = filter check l1
+ where  s = S.fromList [ (atom, reason) | Implies atom _ reason <- l2 ]
+        check (Implies atom _ reason) = (atom, reason) `S.notMember` s
+        check _ = True

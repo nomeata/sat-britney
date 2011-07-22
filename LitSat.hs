@@ -5,4 +5,4 @@ data Clause a
     | AtMostOne [a] String
     | Implies a [a] String
     | Not a String
-    deriving (Show)
+    deriving (Ord,Eq,Show)

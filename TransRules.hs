@@ -13,41 +13,51 @@ import Types
 import LitSat
 
 transitionRules config unstable testing =
-    -- First rule: A source that exists both in unstable and in testing has to stay in testing
-    [OneOf (nub pkgs) ("source " ++ show name ++ " was in testing before.") |
-        (name,pkgs) <- M.toList sourcesBoth
-    ] ++
-    -- Second rule: A binary that exists both in unstable and in testing has to stay in testing
-    [OneOf (nub pkgs) ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
-        ((name,arch),pkgs) <- M.toList binariesBoth
-    ] ++
-    -- Third rule: At most one binary per name and architecture
-    [AtMostOne (nub pkgs) ("binaries ought to be unique per architecture") |
-        ((name,arch),pkgs') <- M.toList binariesBoth,
-        let pkgs = nub pkgs',
-        length pkgs > 1
-    ] ++
-    -- Forth rule: Dependencies
-    [Implies atom (nub deps) ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-        (atom@(Binary _ _ arch),depends) <- M.toList dependsUnion,
-        (disjunction, reason) <- depends,
-        let deps = concatMap (resolve arch) disjunction
-    ] ++
-    -- Fifth rule: release architectures ought to all migrate
-    [Implies src [bin] ("release architectures ought to migrate completely") |
-        (src, bins) <- M.toList buildsOnlyUnstable,
-        -- BEWARE: If more than one binary with the same name built by the same
-        -- source on the same architecture exists in unstable, this will
-        -- contradict with the unique binary package rule.
-        bin <- bins
-    ] ++
-    -- Sixth rule: release architectures ought not to be out of date
-    [Not newer ("is out of date: " ++ show bin ++ " exists in unstable") |
-        (bin, src) <- M.toList (builtBy unstable),
-        -- TODO: only release architecture here
-        newer <- newerSources unstable ! src
-    ]
-  where sourcesBoth = M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
+    ( keepSrc ++ keepBin ++ uniqueBin ++ dependencies ++ releaseSync ++ outdated
+    , dependencies)
+  where keepSrc = 
+            -- First rule: A source that exists both in unstable and in testing has to stay in testing
+            [OneOf (nub pkgs) ("source " ++ show name ++ " was in testing before.") |
+                (name,pkgs) <- M.toList sourcesBoth
+            ]
+        keepBin = 
+            -- Second rule: A binary that exists both in unstable and in testing has to stay in testing
+            [OneOf (nub pkgs) ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
+                ((name,arch),pkgs) <- M.toList binariesBoth
+            ]
+        uniqueBin = 
+            -- Third rule: At most one binary per name and architecture
+            [AtMostOne (nub pkgs) ("binaries ought to be unique per architecture") |
+                ((name,arch),pkgs') <- M.toList binariesBoth,
+                let pkgs = nub pkgs',
+                length pkgs > 1
+            ]
+        dependencies =
+            -- Forth rule: Dependencies
+            [Implies atom (nub deps) ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (atom@(Binary _ _ arch),depends) <- M.toList dependsUnion,
+                (disjunction, reason) <- depends,
+                let deps = concatMap (resolve arch) disjunction
+            ]
+        releaseSync = 
+            -- Fifth rule: release architectures ought to all migrate
+            [Implies src [bin] ("release architectures ought to migrate completely") |
+                (src, bins) <- M.toList buildsOnlyUnstable,
+                -- BEWARE: If more than one binary with the same name built by the same
+                -- source on the same architecture exists in unstable, this will
+                -- contradict with the unique binary package rule.
+                bin <- bins
+            ] 
+        outdated = 
+            -- Sixth rule: release architectures ought not to be out of date
+            [Not newer ("is out of date: " ++ show bin ++ " exists in unstable") |
+                (bin, src) <- M.toList (builtBy unstable),
+                -- TODO: only release architecture here
+                newer <- newerSources unstable ! src
+            ]
+
+
+        sourcesBoth = M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
         binariesUnion = M.unionWith (++) (binaryNames unstable) (binaryNames testing)
         providesUnion = M.unionWith (++) (provides unstable) (provides testing)
