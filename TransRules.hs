@@ -137,11 +137,16 @@ transitionRules config unstable testing =
 checkVersionReq :: Maybe VersionReq -> Maybe DebianVersion -> Bool
 checkVersionReq Nothing _ = True
 checkVersionReq _ Nothing = False
-checkVersionReq (Just (SLT v1)) (Just v2) = extrDV v2 < extrDV v1
-checkVersionReq (Just (LTE v1)) (Just v2) = extrDV v2 <= extrDV v1
-checkVersionReq (Just (EEQ v1)) (Just v2) = extrDV v2 == extrDV v1
-checkVersionReq (Just (GRE v1)) (Just v2) = extrDV v2 >= extrDV v1
-checkVersionReq (Just (SGR v1)) (Just v2) = extrDV v2 > extrDV v1
+checkVersionReq (Just (SLT v1)) (Just v2) =
+    v2 `cmpDebianVersion` v1 == LT
+checkVersionReq (Just (LTE v1)) (Just v2) =
+    v2 `cmpDebianVersion` v1 <= EQ
+checkVersionReq (Just (EEQ v1)) (Just v2) =
+    v2 `cmpDebianVersion` v1 == EQ
+checkVersionReq (Just (GRE v1)) (Just v2) =
+    v2 `cmpDebianVersion` v1 >= EQ
+checkVersionReq (Just (SGR v1)) (Just v2) =
+    v2 `cmpDebianVersion` v1 == GT
 
     
 

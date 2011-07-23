@@ -122,9 +122,11 @@ runBritney config = do
         cnf = clauses2CNF idx cleanedRules
 
     mbDo (dimacsH config) $ \h -> do
+        hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
         hPutStr h $ formatCNF (M.keys cnf)
 
     mbDo (clausesH config) $ \h -> do
+        hPutStrLn stderr $ "Writing SAT problem as literal clauses"
         hPrint h $ nest 4 (vcat (map pp cleanedRules))
 
     hPutStrLn stderr $ "Running main picosat run"

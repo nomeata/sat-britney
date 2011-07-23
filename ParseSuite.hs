@@ -14,6 +14,8 @@ import qualified Data.Strict as ST
 import System.IO
 import System.Directory
 import Data.Time
+import Data.Char
+import Data.Function
 
 import Debian.Control.ByteString
 
@@ -88,7 +90,7 @@ parseSuite config dir = do
 
     let newerSources = {-# SCC "newerSource" #-} M.fromListWith (++) [ (source, newer) |
             sources <- M.elems sourceNames, 
-            let sorted = sort sources,
+            let sorted = sortBy (cmpDebianVersion `on` (\(Source _ v) -> v)) sources,
             source:newer <- tails sorted
             ]
 
@@ -118,36 +120,11 @@ parseSuite config dir = do
 
     -- Now the URGENCY file (may not exist)
     hPutStrLn stderr "Reading and parsing urgency file"
-    urgencyS <- do
-        let file = dir </> "Urgency"
-        ex <- doesFileExist file
-        if ex then BS.readFile file else return BS.empty
-
-    let urgencies = {-# SCC "urgencies" #-} M.fromList [ (src, urgency) | 
-            line <- BS.lines urgencyS,
-            not (BS.null line),
-            let [pkg,version,urgencyS] = BS.words line,
-            let src = Source (SourceName pkg) (DebianVersion version),
-            let urgency = Urgency urgencyS
-            ]
+    urgencies <- parseUrgencyFile (dir </> "Urgency")
 
     -- Now the Dates file (may not exist)
     hPutStrLn stderr "Reading and parsing dates file"
-    dateS <- do
-        let file = dir </> "Dates"
-        ex <- doesFileExist file
-        if ex then BS.readFile file else return BS.empty
-
-    -- Timeszone?
-    now <- utctDay <$> getCurrentTime
-    let epochDay = fromGregorian 1970 1 1
-    let ages = {-# SCC "ages" #-} M.fromList [ (src, Age age) | 
-            line <- BS.lines dateS,
-            not (BS.null line),
-            let [pkg,version,dayS] = BS.words line,
-            let src = Source (SourceName pkg) (DebianVersion version),
-            let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
-            ]
+    ages <- parseAgeFile (dir </> "Dates")
 
     hPutStrLn stderr "Done reading input files."
     return $ SuiteInfo
@@ -165,6 +142,36 @@ parseSuite config dir = do
         urgencies
         ages
 
+parseUrgencyFile :: FilePath -> IO (M.Map Source Urgency)
+parseUrgencyFile file = do
+    ex <- doesFileExist file
+    urgencyS <- if ex then BS.readFile file else return BS.empty
+
+    return $ M.fromList [ (src, urgency) | 
+            line <- BS.lines urgencyS,
+            not (BS.null line),
+            let [pkg,version,urgencyS] = BS.words line,
+            not (isAlpha (BS.head version)),
+            let src = Source (SourceName pkg) (DebianVersion version),
+            let urgency = Urgency urgencyS
+            ]
+
+parseAgeFile :: FilePath -> IO (M.Map Source Age)
+parseAgeFile file = do
+    ex <- doesFileExist file
+    dateS <- if ex then BS.readFile file else return BS.empty
+
+    -- Timeszone?
+    now <- utctDay <$> getCurrentTime
+    let epochDay = fromGregorian 1970 1 1
+    return $ M.fromList [ (src, Age age) | 
+            line <- BS.lines dateS,
+            not (BS.null line),
+            let [pkg,version,dayS] = BS.words line,
+            not (BS.pack "upl" `BS.isPrefixOf` version),
+            let src = Source (SourceName pkg) (DebianVersion version),
+            let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
+            ]
 
 parseDependency :: BS.ByteString -> Either ParseError Dependency
 parseDependency str = parse pRelations (BS.unpack str) str

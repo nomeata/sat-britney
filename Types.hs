@@ -12,6 +12,7 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.List
 import Data.Function
+import DebVersionCmp
 
 type Set = S.Set
 type Map = M.Map
@@ -28,10 +29,8 @@ data VersionReq
     | SGR DebianVersion
       deriving Eq
 
-cmpDebianVersion = compare `on` extrDV
-
-extrDV = parseDebianVersion . unDebianVersion
-
+cmpDebianVersion :: DebianVersion -> DebianVersion -> Ordering
+cmpDebianVersion = versionCompare `on` unDebianVersion
 
 newtype Arch = Arch { unArch :: ByteString }
     deriving (Ord, Eq)
