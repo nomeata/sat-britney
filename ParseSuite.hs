@@ -9,6 +9,7 @@ import Text.Parsec.ByteString
 import Data.List
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
+import Data.ByteString.Nums.Careless
 import qualified Data.Strict as ST
 import System.IO
 
@@ -24,6 +25,7 @@ myParseControl file = do
         either (error . show) (return . unControl)
     return control
 
+parseSuite :: Config -> FilePath -> IO SuiteInfo
 parseSuite config dir = do
     {-
     sources <- myParseControl (dir </>"Sources")
@@ -91,6 +93,26 @@ parseSuite config dir = do
             ]
 
     let binaries = S.fromList binaryAtoms
+    let atoms = S.mapMonotonic SrcAtom sourceAtoms `S.union` S.mapMonotonic BinAtom binaries
+
+    -- Now to the bug file
+    hPutStrLn stderr "Reading and parsing bugs file"
+    bugS <- BS.readFile (dir </> "BugsV")
+    let rawBugs = M.fromList [ (pkg, bugs) |
+            line <- BS.lines bugS,
+            let [pkg,buglist] = BS.words line,
+            let bugs = Bug . int <$> BS.split ',' buglist
+            ]
+
+    let bugs = set2Map (\atom -> case atom of
+            SrcAtom (Source sn' _) ->
+                let sn = unSourceName sn'
+                in  M.findWithDefault [] sn rawBugs ++
+                    M.findWithDefault [] (BS.pack "src:" `BS.append` sn) rawBugs
+            BinAtom (Binary bn' _ _) -> 
+                let bn = unBinName bn'
+                in  M.findWithDefault [] bn rawBugs 
+            ) atoms
 
     return $ SuiteInfo
         sourceAtoms
@@ -103,6 +125,7 @@ parseSuite config dir = do
         (M.fromList binaryDepends)
         (M.fromList (concat binaryProvides))
         newerSources
+        bugs
 
 
 parseDependency :: BS.ByteString -> Either ParseError Dependency
@@ -211,3 +234,6 @@ pPkgName = do skipMany (char ',' <|> whiteChar)
               pkgName <- many1 (noneOf [' ',',','|','\t','\n','('])
               skipMany (char ',' <|> whiteChar)
               return pkgName
+
+set2Map :: (a -> b) -> S.Set a -> M.Map a b
+set2Map f s = M.fromDistinctAscList [ (k, f k) | k <- S.toAscList s ]

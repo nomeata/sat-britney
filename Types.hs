@@ -49,6 +49,11 @@ instance Show Atom where
     show (SrcAtom src) = show src
     show (BinAtom bin) = show bin
 
+newtype Bug = Bug { unBug :: Int }
+    deriving (Ord, Eq)
+
+instance Show Bug where show = show . unBug
+
 
 data ArchitectureReq
     = ArchOnly [Arch]
@@ -76,7 +81,8 @@ data SuiteInfo = SuiteInfo {
     builtBy :: Map Binary Source,
     depends :: Map Binary Dependency,
     provides :: Map (BinName, Arch) [Binary],
-    newerSources :: Map Source [Source]
+    newerSources :: Map Source [Source],
+    bugs :: Map Atom [Bug]
     }
 
 data Config = Config {
