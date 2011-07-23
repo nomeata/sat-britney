@@ -12,6 +12,8 @@ import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Nums.Careless
 import qualified Data.Strict as ST
 import System.IO
+import System.Directory
+import Data.Time
 
 import Debian.Version.ByteString
 import Debian.Control.ByteString
@@ -39,7 +41,6 @@ parseSuite config dir = do
 
     binaries <- concat <$>
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
-    hPutStrLn stderr "Done reading input files."
 
     let (binaryAtoms, binaryDepends, binaryProvides, builtByList) = unzip4 [
             (atom, (atom, depends), provides, (atom, sourceAtom)) |
@@ -98,6 +99,8 @@ parseSuite config dir = do
     -- Now to the bug file
     hPutStrLn stderr "Reading and parsing bugs file"
     bugS <- BS.readFile (dir </> "BugsV")
+    hPutStrLn stderr "Done reading input files."
+
     let rawBugs = M.fromList [ (pkg, bugs) |
             line <- BS.lines bugS,
             not (BS.null line),
@@ -115,6 +118,39 @@ parseSuite config dir = do
                 in  M.findWithDefault [] bn rawBugs 
             ) atoms
 
+    -- Now the URGENCY file (may not exist)
+    urgencyS <- do
+        let file = dir </> "Urgency"
+        ex <- doesFileExist file
+        if ex then BS.readFile file else return BS.empty
+
+    let urgencies = M.fromList [ (src, urgency) | 
+            line <- BS.lines urgencyS,
+            not (BS.null line),
+            let [pkg,version,urgencyS] = BS.words line,
+            let src = Source (SourceName pkg) (parseDebianVersion version),
+            let urgency = Urgency urgencyS
+            ]
+
+    -- Now the Dates file (may not exist)
+    dateS <- do
+        let file = dir </> "Dates"
+        ex <- doesFileExist file
+        if ex then BS.readFile file else return BS.empty
+
+    -- Timeszone?
+    now <- utctDay <$> getCurrentTime
+    let epochDay = fromGregorian 1970 1 1
+    let ages = M.fromList [ (src, Age age) | 
+            line <- BS.lines dateS,
+            not (BS.null line),
+            let ws = BS.words line,
+            let [pkg,version,dayS] = BS.words line,
+            let src = Source (SourceName pkg) (parseDebianVersion version),
+            let uploadDay = int dayS `addDays` epochDay,
+            let age = fromIntegral $ now `diffDays` uploadDay
+            ]
+
     return $ SuiteInfo
         sourceAtoms
         binaries
@@ -127,6 +163,8 @@ parseSuite config dir = do
         (M.fromList (concat binaryProvides))
         newerSources
         bugs
+        urgencies
+        ages
 
 
 parseDependency :: BS.ByteString -> Either ParseError Dependency

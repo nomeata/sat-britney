@@ -84,8 +84,15 @@ transitionRules config unstable testing =
         dependsUnion = M.union (depends unstable) (depends testing)
         bugsUnion = M.unionWith (++) (bugs unstable) (bugs testing)
 
-        bugsInTesting = S.fromList (concat (M.elems (bugs testing)))
-        bugsInUnstable = S.fromList (concat (M.elems (bugs unstable)))
+        -- This does not work, as bugs with tag "sid" would appear as new bugs
+        -- bugsInTesting = S.fromList (concat (M.elems (bugs testing)))
+        -- bugsInUnstable = S.fromList (concat (M.elems (bugs unstable)))
+        bugsInTesting = S.fromList [ bug |
+            atom <- S.toList (atoms testing),
+            bug <- M.findWithDefault [] atom bugsUnion ]
+        bugsInUnstable = S.fromList [ bug |
+            atom <- S.toList (atoms unstable),
+            bug <- M.findWithDefault [] atom bugsUnion ]
         forbiddenBugs = bugsInUnstable `S.difference` bugsInTesting
 
         buildsOnlyUnstable = M.difference (builds unstable) (builds testing)

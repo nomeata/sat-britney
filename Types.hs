@@ -52,9 +52,15 @@ instance Show Atom where
 
 newtype Bug = Bug { unBug :: Int }
     deriving (Ord, Eq)
-
 instance Show Bug where show = show . unBug
 
+newtype Urgency = Urgency { unUrgency :: ByteString }
+    deriving (Ord, Eq)
+instance Show Urgency where show = BS.unpack . unUrgency
+
+newtype Age = Age { unAge :: Int }
+    deriving (Ord, Eq)
+instance Show Age where show = show . unAge
 
 data ArchitectureReq
     = ArchOnly [Arch]
@@ -83,7 +89,9 @@ data SuiteInfo = SuiteInfo {
     depends :: Map Binary Dependency,
     provides :: Map (BinName, Arch) [Binary],
     newerSources :: Map Source [Source],
-    bugs :: Map Atom [Bug]
+    bugs :: Map Atom [Bug],
+    urgencies :: Map Source Urgency,
+    age :: Map Source Age
     }
 
 data Config = Config {
