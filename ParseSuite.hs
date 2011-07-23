@@ -42,7 +42,8 @@ parseSuite config dir = do
     binaries <- concat <$>
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
-    let (binaryAtoms, binaryDepends, binaryProvides, builtByList) = unzip4 [
+    let (binaryAtoms, binaryDepends, binaryProvides, builtByList) =
+          {-# SCC "unzipping" #-} unzip4 $ {-# SCC "traverseControl" #-} [
             (atom, (atom, depends), provides, (atom, sourceAtom)) |
             para <- binaries,
             let Just pkg = fieldValue "Package" para,
@@ -65,15 +66,15 @@ parseSuite config dir = do
             let sourceS = fromMaybe pkg (fieldValue "Source" para),
             let (source,sourceVersion) = case BS.words sourceS of
                     [s,sv] | BS.head sv == '(' && BS.last sv == ')' 
-                           -> (s, parseDebianVersion (BS.init (BS.tail sv)))
+                           -> (s, {-# SCC "parseDebianVersion" #-} parseDebianVersion (BS.init (BS.tail sv)))
                     [s]    -> (s, version),
             let sourceAtom = Source (SourceName source) sourceVersion
             ]
 
-    let builtBy = M.fromList builtByList
-    let builds = M.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
+    let builtBy = {-# SCC "builtBy" #-} M.fromList builtByList
+    let builds = {-# SCC "builds" #-}  M.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
 
-    let binaryNames = M.fromListWith (++) 
+    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) 
             [ ((pkg,arch), [atom]) |
                 atom <- binaryAtoms,
                 let Binary pkg _ mbArch = atom,
@@ -82,33 +83,33 @@ parseSuite config dir = do
 
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
-    let sourceAtoms = S.fromList (M.elems builtBy)
+    let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (M.elems builtBy)
 
-    let sourceNames =  M.fromListWith (++)
+    let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++)
             [ (pkg, [atom]) | atom@(Source pkg _) <- S.toList sourceAtoms ]
 
-    let newerSources = M.fromListWith (++) [ (source, newer) |
+    let newerSources = {-# SCC "newerSource" #-} M.fromListWith (++) [ (source, newer) |
             sources <- M.elems sourceNames, 
             let sorted = sort sources,
             source:newer <- tails sorted
             ]
 
-    let binaries = S.fromList binaryAtoms
-    let atoms = S.mapMonotonic SrcAtom sourceAtoms `S.union` S.mapMonotonic BinAtom binaries
+    let binaries = {-# SCC "binaries" #-} S.fromList binaryAtoms
+    let atoms = {-# SCC "atoms" #-} S.mapMonotonic SrcAtom sourceAtoms `S.union` S.mapMonotonic BinAtom binaries
 
     -- Now to the bug file
     hPutStrLn stderr "Reading and parsing bugs file"
     bugS <- BS.readFile (dir </> "BugsV")
     hPutStrLn stderr "Done reading input files."
 
-    let rawBugs = M.fromList [ (pkg, bugs) |
+    let rawBugs = {-# SCC "rawBugs" #-} M.fromList [ (pkg, bugs) |
             line <- BS.lines bugS,
             not (BS.null line),
             let [pkg,buglist] = BS.words line,
             let bugs = Bug . int <$> BS.split ',' buglist
             ]
     
-    let bugs = set2MapNonEmpty (\atom -> case atom of
+    let bugs = {-# SCC "bugs" #-} set2MapNonEmpty (\atom -> case atom of
             SrcAtom (Source sn' _) ->
                 let sn = unSourceName sn'
                 in  M.findWithDefault [] sn rawBugs ++
@@ -124,11 +125,11 @@ parseSuite config dir = do
         ex <- doesFileExist file
         if ex then BS.readFile file else return BS.empty
 
-    let urgencies = M.fromList [ (src, urgency) | 
+    let urgencies = {-# SCC "urgencies" #-} M.fromList [ (src, urgency) | 
             line <- BS.lines urgencyS,
             not (BS.null line),
             let [pkg,version,urgencyS] = BS.words line,
-            let src = Source (SourceName pkg) (parseDebianVersion version),
+            let src = Source (SourceName pkg) ({-# SCC "parseDebianVersion" #-} parseDebianVersion version),
             let urgency = Urgency urgencyS
             ]
 
@@ -141,13 +142,12 @@ parseSuite config dir = do
     -- Timeszone?
     now <- utctDay <$> getCurrentTime
     let epochDay = fromGregorian 1970 1 1
-    let ages = M.fromList [ (src, Age age) | 
+    let ages = {-# SCC "ages" #-} M.fromList [ (src, Age age) | 
             line <- BS.lines dateS,
             not (BS.null line),
             let [pkg,version,dayS] = BS.words line,
-            let src = Source (SourceName pkg) (parseDebianVersion version),
-            let uploadDay = int dayS `addDays` epochDay,
-            let age = fromIntegral $ now `diffDays` uploadDay
+            let src = Source (SourceName pkg) ({-# SCC "parseDebianVersion" #-} parseDebianVersion version),
+            let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
             ]
 
     return $ SuiteInfo
@@ -213,7 +213,7 @@ pMaybeVerReq =
        version <- many1 (noneOf [' ',')','\t','\n'])
        skipMany whiteChar
        char ')'
-       return $ Just (op (parseDebianVersion version))
+       return $ Just (op ({-# SCC "parseDebianVersion" #-} parseDebianVersion version))
     <|>
     do return $ Nothing
 

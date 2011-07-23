@@ -19,17 +19,20 @@ transitionRules config unstable testing =
     , dependencies)
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
+            {-# SCC "keepSrc" #-}
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
                 (name,pkgs) <- M.toList sourcesBoth,
                 let atoms = map SrcAtom (nub pkgs)
             ]
         keepBin = 
+            {-# SCC "keepBin" #-}
             -- A binary that exists both in unstable and in testing has to stay in testing
             [OneOf atoms ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
                 ((name,arch),pkgs) <- M.toList binariesBoth,
                 let atoms = map BinAtom (nub pkgs)
             ]
         uniqueBin = 
+            {-# SCC "uniqueBin" #-}
             -- At most one binary per name and architecture
             [AtMostOne (nub pkgs) ("binaries ought to be unique per architecture") |
                 ((name,arch),pkgs') <- M.toList binariesBoth,
@@ -37,13 +40,15 @@ transitionRules config unstable testing =
                 length pkgs > 1
             ]
         dependencies =
+            {-# SCC "dependencies" #-}
             -- Dependencies
             [Implies (BinAtom bin) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (bin@(Binary _ _ arch),depends) <- M.toList dependsUnion,
                 (disjunction, reason) <- depends,
-                let deps = map BinAtom . nub . concatMap (resolve arch) $ disjunction
+                let deps = map BinAtom . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
             ]
         releaseSync = 
+            {-# SCC "releaseSync" #-}
             -- release architectures ought to all migrate
             [Implies (SrcAtom src) [bin] ("release architectures ought to migrate completely") |
                 (src, bins) <- M.toList buildsOnlyUnstable,
@@ -53,6 +58,7 @@ transitionRules config unstable testing =
                 bin <- BinAtom <$> bins
             ] 
         tooyoung = 
+            {-# SCC "tooyoung" #-}
             -- packages need to be old enough
             [Not (SrcAtom src) ("it is " ++ show age ++ " days old, needs " ++ show minAge) |
                 src <- M.keys buildsOnlyUnstable,
@@ -62,11 +68,13 @@ transitionRules config unstable testing =
                 age <= minAge
             ] 
         needsSource = 
+            {-# SCC "needsSource" #-}
             -- a package needs its source
             [Implies (BinAtom bin) [SrcAtom src] ("of the DFSG") |
                 (bin, src) <- M.toList (builtBy unstable)
             ]
         outdated = 
+            {-# SCC "outdated" #-}
             -- release architectures ought not to be out of date
             [Not (SrcAtom newer) ("is out of date: " ++ show bin ++ " exists in unstable") |
                 (bin, src) <- M.toList (builtBy unstable),
@@ -75,38 +83,40 @@ transitionRules config unstable testing =
                 newer `S.notMember` sources testing
             ]
         buggy = 
+            {-# SCC "buggy1" #-}
             -- no new RC bugs
             [Implies atom [bug] ("it has this bugs") |
                 (atom, bugs) <- M.toList bugsUnion,
                 bug <- BugAtom <$> nub bugs
             ] ++
+            {-# SCC "buggy2" #-}
             [Not atom ("it was not in testing before") |
                 
                 atom <- BugAtom <$> S.toList forbiddenBugs
             ]
 
 
-        sourcesBoth = M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
-        binariesBoth = M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
-        binariesUnion = M.unionWith (++) (binaryNames unstable) (binaryNames testing)
-        providesUnion = M.unionWith (++) (provides unstable) (provides testing)
+        sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
+        binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
+        binariesUnion = {-# SCC "binariesUnion" #-} M.unionWith (++) (binaryNames unstable) (binaryNames testing)
+        providesUnion = {-# SCC "providesUnion" #-} M.unionWith (++) (provides unstable) (provides testing)
         -- We assume that the dependency information is the same, even from different suites
-        dependsUnion = M.union (depends unstable) (depends testing)
-        bugsUnion = M.unionWith (++) (bugs unstable) (bugs testing)
+        dependsUnion = {-# SCC "dependsUnion" #-} M.union (depends unstable) (depends testing)
+        bugsUnion = {-# SCC "bugsUnion" #-} M.unionWith (++) (bugs unstable) (bugs testing)
 
         -- This does not work, as bugs with tag "sid" would appear as new bugs
         -- bugsInTesting = S.fromList (concat (M.elems (bugs testing)))
-        -- bugsInUnstable = S.fromList (concat (M.elems (bugs unstable)))
-        bugsInTesting = S.fromList [ bug |
+        -- bugsInUnstable = {-# SCC "bugsInUnstable" #-} S.fromList (concat (M.elems (bugs unstable)))
+        bugsInTesting = {-# SCC "bugsInTesting" #-} S.fromList [ bug |
             atom <- S.toList (atoms testing),
             bug <- M.findWithDefault [] atom bugsUnion ]
-        bugsInUnstable = S.fromList [ bug |
+        bugsInUnstable = {-# SCC "bugsInUnstable" #-} S.fromList [ bug |
             atom <- S.toList (atoms unstable),
             bug <- M.findWithDefault [] atom bugsUnion ]
-        forbiddenBugs = bugsInUnstable `S.difference` bugsInTesting
+        forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `S.difference` bugsInTesting
 
-        buildsOnlyUnstable = M.difference (builds unstable) (builds testing)
-        atomsOnlyUnstable = S.difference (atoms unstable) (atoms testing)
+        buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} M.difference (builds unstable) (builds testing)
+        atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} S.difference (atoms unstable) (atoms testing)
 
         resolve mbArch (DepRel name mbVerReq mbArchReq)
             | checkArchReq mbArchReq = 
