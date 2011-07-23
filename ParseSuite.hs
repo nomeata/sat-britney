@@ -100,11 +100,12 @@ parseSuite config dir = do
     bugS <- BS.readFile (dir </> "BugsV")
     let rawBugs = M.fromList [ (pkg, bugs) |
             line <- BS.lines bugS,
+            not (BS.null line),
             let [pkg,buglist] = BS.words line,
             let bugs = Bug . int <$> BS.split ',' buglist
             ]
-
-    let bugs = set2Map (\atom -> case atom of
+    
+    let bugs = set2MapNonEmpty (\atom -> case atom of
             SrcAtom (Source sn' _) ->
                 let sn = unSourceName sn'
                 in  M.findWithDefault [] sn rawBugs ++
@@ -234,6 +235,9 @@ pPkgName = do skipMany (char ',' <|> whiteChar)
               pkgName <- many1 (noneOf [' ',',','|','\t','\n','('])
               skipMany (char ',' <|> whiteChar)
               return pkgName
+
+set2MapNonEmpty :: (a -> [b]) -> S.Set a -> M.Map a [b]
+set2MapNonEmpty f s = M.fromDistinctAscList [ (k, v) | k <- S.toAscList s, let v = f k, not (null v) ]
 
 set2Map :: (a -> b) -> S.Set a -> M.Map a b
 set2Map f s = M.fromDistinctAscList [ (k, f k) | k <- S.toAscList s ]

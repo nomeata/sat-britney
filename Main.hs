@@ -58,17 +58,30 @@ runBritney dir = do
             -- print (vcat (map pp clauses))
             mapM_ print clauses
         Right newAtoms -> do
-            printDifference (atoms testing) newAtoms
+            let (newSource, newBinaries, _) = splitAtoms newAtoms
+            putStrLn "Changes of Sources:"
+            printDifference (sources testing) newSource
+            putStrLn "Changes of Package:"
+            printDifference (binaries testing) newBinaries
     
+splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
+             S.fold select ([],[],[])
+  where select (SrcAtom x) ~(l1,l2,l3) = (x:l1,l2,l3)
+        select (BinAtom x) ~(l1,l2,l3) = (l1,x:l2,l3)
+        select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
+
+printDifference :: (Show a, Ord a) => S.Set a -> S.Set a -> IO ()
 printDifference old new = do
+    {-
     putStrLn "New state"
-    forM_ (S.toList new) $ \atom -> putStrLn $ "    " ++ show atom
+    forM_ (S.toList new) $ \x -> putStrLn $ "    " ++ show x
+    -}
     let added = new `S.difference` old
-    putStrLn "Newly added packages"
-    forM_ (S.toList added) $ \atom -> putStrLn $ "    " ++ show atom
+    putStrLn "Newly added:"
+    forM_ (S.toList added) $ \x -> putStrLn $ "    " ++ show x
     let removed = old `S.difference` new
-    putStrLn "Removed packages"
-    forM_ (S.toList removed) $ \atom -> putStrLn $ "    " ++ show atom
+    putStrLn "Removed:"
+    forM_ (S.toList removed) $ \x -> putStrLn $ "    " ++ show x
 
 printUsage = do
     name <- getProgName

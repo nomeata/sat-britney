@@ -35,7 +35,7 @@ data Source = Source !SourceName !DebianVersion
 data Binary = Binary !BinName !DebianVersion !(ST.Maybe Arch)
     deriving (Ord, Eq)
 
-data Atom = SrcAtom !Source | BinAtom !Binary
+data Atom = SrcAtom !Source | BinAtom !Binary | BugAtom !Bug
     deriving (Ord, Eq)
 
 instance Show Source where
@@ -48,6 +48,7 @@ instance Show Binary where
 instance Show Atom where
     show (SrcAtom src) = show src
     show (BinAtom bin) = show bin
+    show (BugAtom bug) = "rc_bug_" ++ show bug
 
 newtype Bug = Bug { unBug :: Int }
     deriving (Ord, Eq)

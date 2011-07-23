@@ -2,6 +2,7 @@ module TransRules where
 
 import Data.List
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Map ((!))
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
@@ -14,7 +15,7 @@ import Types
 import LitSat
 
 transitionRules config unstable testing =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ dependencies ++ releaseSync ++ outdated
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ buggy ++ dependencies
     , dependencies)
   where keepSrc = 
             -- First rule: A source that exists both in unstable and in testing has to stay in testing
@@ -51,12 +52,27 @@ transitionRules config unstable testing =
                 -- contradict with the unique binary package rule.
                 bin <- BinAtom <$> bins
             ] 
+        needsSource = 
+            -- Sixth rule: a package needs its source
+            [Implies (BinAtom bin) [SrcAtom src] ("of the DFSG") |
+                (bin, src) <- M.toList (builtBy unstable)
+            ]
         outdated = 
             -- Sixth rule: release architectures ought not to be out of date
             [Not (SrcAtom newer) ("is out of date: " ++ show bin ++ " exists in unstable") |
                 (bin, src) <- M.toList (builtBy unstable),
                 -- TODO: only release architecture here
                 newer <- newerSources unstable ! src
+            ]
+        buggy = 
+            -- Seventh rule: no new RC bugs
+            [Implies atom [bug] ("it has this bugs") |
+                (atom, bugs) <- M.toList bugsUnion,
+                bug <- BugAtom <$> nub bugs
+            ] ++
+            [Not atom ("it was not in testing before") |
+                
+                atom <- BugAtom <$> S.toList forbiddenBugs
             ]
 
 
@@ -66,8 +82,14 @@ transitionRules config unstable testing =
         providesUnion = M.unionWith (++) (provides unstable) (provides testing)
         -- We assume that the dependency information is the same, even from different suites
         dependsUnion = M.union (depends unstable) (depends testing)
+        bugsUnion = M.unionWith (++) (bugs unstable) (bugs testing)
+
+        bugsInTesting = S.fromList (concat (M.elems (bugs testing)))
+        bugsInUnstable = S.fromList (concat (M.elems (bugs unstable)))
+        forbiddenBugs = bugsInUnstable `S.difference` bugsInTesting
 
         buildsOnlyUnstable = M.difference (builds unstable) (builds testing)
+        atomsOnlyUnstable = S.difference (atoms unstable) (atoms testing)
 
         resolve mbArch (DepRel name mbVerReq mbArchReq)
             | checkArchReq mbArchReq = 
