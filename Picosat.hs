@@ -9,6 +9,7 @@ import System.Process
 import Data.Functor
 import Data.List
 import Data.Ord
+import Data.Maybe
 import Data.Function
 
 import qualified Data.Map as M
@@ -29,11 +30,11 @@ formatCNF cnf =
   where safeMax [] = 0
         safeMax l = maximum l
 
-parseCNF :: String -> CNF
+parseCNF :: BS.ByteString -> CNF
 parseCNF str =
-    map (init . map read . words) $
-    dropWhile (\l -> null l || head l `elem` "cp") $
-    lines str
+    map (init . map int . BS.words) $
+    dropWhile (\l -> BS.null l || BS.head l `elem` "cp") $
+    BS.lines str
 
 runPicosatCNF :: CNF -> IO (Either CNF [Int])
 runPicosatCNF cnf = do
@@ -52,16 +53,21 @@ runPicosatCNF cnf = do
     hPutStr hint cnfString
     hClose hint
     
-    result <- hGetLine hout
+    result <- fix $ \next -> do
+        line <- hGetLine hout
+        if null line || head line == 'c' then next else return line
     case result of
         "s UNSATISFIABLE" -> do
-            core <- parseCNF <$> hGetContents coreIn
+            hClose hout
+            core <- parseCNF <$> BS.hGetContents coreIn
             return (Left core)
         "s SATISFIABLE" -> do
+            hClose coreIn
             satvarsS <- BS.hGetContents hout
-            let ls = map (\l ->
-                        if not (BS.null l) && BS.head l == 'v'
-                        then BS.drop 2 l
+            let ls = mapMaybe (\l ->
+                        if BS.null l then Nothing
+                        else if BS.head l == 'c' then Nothing
+                        else if BS.head l == 'v' then Just (BS.drop 2 l)
                         else error $ "Cannot parse picosat SAT output: " ++ BS.unpack l
                     ) $ BS.lines satvarsS
             let vars = case concatMap BS.words ls of 

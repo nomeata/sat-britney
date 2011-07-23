@@ -60,4 +60,3 @@ runRelaxer :: CNF2Clause a -> CNF2Clause a -> IO (Either [Clause a] [Clause a])
 runRelaxer relaxable cnf = do
     removeCNF <- relaxer (M.keysSet relaxable) (M.keys cnf)
     return $ either (Left . cnf2Clause cnf) (Right . cnf2Clause cnf) removeCNF
-

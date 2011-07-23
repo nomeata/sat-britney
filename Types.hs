@@ -110,3 +110,6 @@ data Config = Config
     , dimacsH :: Maybe Handle
     , differenceH :: Maybe Handle
     }
+
+mbDo Nothing _ = return ()
+mbDo (Just x) f = f x

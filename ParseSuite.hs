@@ -144,7 +144,6 @@ parseSuite config dir = do
     let ages = M.fromList [ (src, Age age) | 
             line <- BS.lines dateS,
             not (BS.null line),
-            let ws = BS.words line,
             let [pkg,version,dayS] = BS.words line,
             let src = Source (SourceName pkg) (parseDebianVersion version),
             let uploadDay = int dayS `addDays` epochDay,

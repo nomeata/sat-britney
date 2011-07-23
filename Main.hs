@@ -5,6 +5,7 @@ import System.FilePath
 import Text.PrettyPrint
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.ByteString.Char8 as BS
 import Control.Monad
 import System.IO
 import System.Console.GetOpt
@@ -23,6 +24,7 @@ import TransRules
 import Types
 import PrettyPrint
 import ClauseSat
+import Picosat
 import LitSat
 
 minAgeTable = M.fromList [
@@ -33,9 +35,12 @@ minAgeTable = M.fromList [
     (Urgency "emergency", Age 2)
     ]
 
-defaultConfig = Config "." [i386] [i386] i386 minAgeTable (Age 10)
+defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10)
                        Nothing False Nothing Nothing Nothing
   where i386 = Arch "i386"
+
+allArches = map (Arch . BS.pack) $ words
+    "i386 sparc powerpc armel ia64 mips mipsel s390 amd64 kfreebsd-i386 kfreebsd-amd64"
 
 openH "-" = return (Just stdout)
 openH filename = do
@@ -44,16 +49,25 @@ openH filename = do
             "Error: Couldn't open " ++ filename ++ " for writing:\n" ++ show e ++ "\n"
         exitFailure
         return undefined
+
+toArchList = map Arch . BS.split ',' . BS.pack
+
 opts =
     [ Option "d" ["dir"]
       (ReqArg (\d config -> return (config { dir = d })) "DIR")
       "directory containing britney data"
+    , Option "a" ["arches"]
+      (ReqArg (\as config -> return (config { arches = toArchList as })) "ARCH1,ARCH2")
+      "comma-separated list of arches to consider at all. Defaults to all"
+    , Option "r" ["release-arches"]
+      (ReqArg (\as config -> return (config { releaseArches = toArchList as })) "ARCH1,ARCH2")
+      "comma-separated list of arches to consider release critical. Defaults to all"
     , Option "" ["relaxation"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { relaxationH = h })) "FILE")
       "print relaxation clauses to this file"
-    , Option "" ["relaxation"]
+{-    , Option "" ["relaxation"]
       (NoArg (\config -> return (config { verboseRelaxation = True })))
-      "more verbose relaxation output"
+      "more verbose relaxation output" -}
     , Option "" ["clauses"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { clausesH = h })) "FILE")
       "print literate clauses to this file"
@@ -93,10 +107,12 @@ runBritney config = do
         Left mus -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
             hPrint stderr $ nest 4 (vcat (map pp mus))
+            exitFailure
             return []
         Right removeClause -> do
-            putStrLn $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
-            print (nest 4 (vcat (map pp removeClause)))
+            mbDo (relaxationH config) $ \h -> do
+                hPutStrLn h $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
+                hPrint h $ nest 4 (vcat (map pp removeClause))
             return removeClause
 
 
@@ -105,19 +121,27 @@ runBritney config = do
         idx = allAtoms cleanedRules
         cnf = clauses2CNF idx cleanedRules
 
+    mbDo (dimacsH config) $ \h -> do
+        hPutStr h $ formatCNF (M.keys cnf)
+
+    mbDo (clausesH config) $ \h -> do
+        hPrint h $ nest 4 (vcat (map pp cleanedRules))
+
     hPutStrLn stderr $ "Running main picosat run"
     result <- runPicosat idx cnf
     case result of 
         Left clauses -> do
             putStrLn "No suitable set of packages could be determined,"
             putStrLn "because the following requirements conflict:"
+            putStrLn "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map pp removeClause)))
         Right newAtoms -> do
-            let (newSource, newBinaries, _) = splitAtoms newAtoms
-            putStrLn "Changes of Sources:"
-            printDifference (sources testing) newSource
-            putStrLn "Changes of Package:"
-            printDifference (binaries testing) newBinaries
+            mbDo (differenceH config) $ \h -> do
+                let (newSource, newBinaries, _) = splitAtoms newAtoms
+                hPutStrLn h "Changes of Sources:"
+                printDifference h (sources testing) newSource
+                hPutStrLn h "Changes of Package:"
+                printDifference h (binaries testing) newBinaries
     hPutStrLn stderr $ "Done"
     
 splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
@@ -126,18 +150,18 @@ splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
         select (BinAtom x) ~(l1,l2,l3) = (l1,x:l2,l3)
         select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
 
-printDifference :: (Show a, Ord a) => S.Set a -> S.Set a -> IO ()
-printDifference old new = do
+printDifference :: (Show a, Ord a) => Handle -> S.Set a -> S.Set a -> IO ()
+printDifference h old new = do
     {-
     putStrLn "New state"
     forM_ (S.toList new) $ \x -> putStrLn $ "    " ++ show x
     -}
     let added = new `S.difference` old
-    putStrLn "Newly added:"
-    forM_ (S.toList added) $ \x -> putStrLn $ "    " ++ show x
+    hPutStrLn h "Newly added:"
+    forM_ (S.toList added) $ \x -> hPutStrLn h $ "    " ++ show x
     let removed = old `S.difference` new
-    putStrLn "Removed:"
-    forM_ (S.toList removed) $ \x -> putStrLn $ "    " ++ show x
+    hPutStrLn h "Removed:"
+    forM_ (S.toList removed) $ \x -> hPutStrLn h $ "    " ++ show x
 
 
 removeRelated l1 l2 = filter check l1
