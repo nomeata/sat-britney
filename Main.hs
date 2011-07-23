@@ -8,6 +8,8 @@ import qualified Data.Set as S
 import Control.Monad
 import System.IO
 import System.Console.GetOpt
+import System.Exit
+import Data.Functor
 
 import Debian.Control
 import Debian.Control.ByteString
@@ -35,22 +37,46 @@ defaultConfig = Config "." [i386] [i386] i386 minAgeTable (Age 10)
                        Nothing False Nothing Nothing Nothing
   where i386 = Arch "i386"
 
+openH "-" = return (Just stdout)
+openH filename = do
+    catch (Just <$> openFile filename WriteMode) $ \e -> do
+        hPutStr stderr $
+            "Error: Couldn't open " ++ filename ++ " for writing:\n" ++ show e ++ "\n"
+        exitFailure
+        return undefined
 opts =
     [ Option "d" ["dir"]
-      (ReqArg (\d config -> config { dir = d }) "DIR")
+      (ReqArg (\d config -> return (config { dir = d })) "DIR")
       "directory containing britney data"
+    , Option "" ["relaxation"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { relaxationH = h })) "FILE")
+      "print relaxation clauses to this file"
+    , Option "" ["relaxation"]
+      (NoArg (\config -> return (config { verboseRelaxation = True })))
+      "more verbose relaxation output"
+    , Option "" ["clauses"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { clausesH = h })) "FILE")
+      "print literate clauses to this file"
+    , Option "" ["dimacs"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { dimacsH = h })) "FILE")
+      "print SAT solver input in dimacs format to this file"
+    , Option "" ["difference"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { differenceH = h })) "FILE")
+      "print result overview to this file"
     ] 
 
 main = do
     args <- getArgs
     name <- getProgName
-    let header = "Usage: " ++ name ++ " [OPTION...]"
+    let header = "Usage: " ++ name ++ " -d DIR [OPTION...]"
+        footer = "Instead of FILE, \"-\" can be used to print to the standard output.\n"
+        usage = hPutStr stderr $ usageInfo header opts ++ footer
+    if null args then usage else do
     case getOpt Permute opts args of
         (o,[],[] ) -> do
-            let config = foldl (flip id) defaultConfig o
+            config <- foldM (flip id) defaultConfig o
             runBritney config 
-        (_,_,errs) -> do
-            hPutStr stderr $ concat errs ++ usageInfo header opts
+        (_,_,errs) -> usage 
 
 runBritney config = do
     unstable <- parseSuite config (dir config </> "unstable")
