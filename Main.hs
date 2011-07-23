@@ -6,6 +6,7 @@ import Text.PrettyPrint
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad
+import System.IO
 
 import Debian.Control
 import Debian.Control.ByteString
@@ -18,18 +19,26 @@ import ParseSuite
 import TransRules
 import Types
 import PrettyPrint
-import Picosat
+import ClauseSat
 import LitSat
 
 minAgeTable = M.fromList [
     (Urgency "low", Age 10), 
-    (Urgency "high", Age 5)
+    (Urgency "medium", Age 5),
+    (Urgency "high", Age 2),
+    (Urgency "critical", Age 2),
+    (Urgency "emergency", Age 2)
     ]
 
 config = Config all all i386 minAgeTable (Age 10)
-  where all = [ i386 {- , amd64 -} ]
+  where all = [
+            i386 
+            --, amd64 
+            , powerpc
+            ]
         i386 = Arch "i386"
         amd64 = Arch "amd64"
+        powerpc = Arch "powerpc"
 
 main = do
     args <- getArgs
@@ -46,29 +55,38 @@ runBritney dir = do
         cnfT = clauses2CNF idxT rulesT
         relaxableClauses = clauses2CNF idxT relaxable
     
-    removeCnf <- relaxer (M.keysSet relaxableClauses) (M.keys cnfT)
-    let removeClause = cnf2Clause cnfT removeCnf
-    putStrLn $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
-    print (nest 4 (vcat (map pp removeClause)))
+    hPutStrLn stderr $ "Relaxing testing to a consistent set..."
+    removeClauseE <- runRelaxer relaxableClauses cnfT
+    removeClause <- case removeClauseE of
+        Left mus -> do
+            hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
+            hPrint stderr $ nest 4 (vcat (map pp mus))
+            return []
+        Right removeClause -> do
+            putStrLn $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
+            print (nest 4 (vcat (map pp removeClause)))
+            return removeClause
+
 
     let (rules, _) = transitionRules config unstable testing
         cleanedRules = rules `removeRelated` removeClause
         idx = allAtoms cleanedRules
         cnf = clauses2CNF idx cleanedRules
 
+    hPutStrLn stderr $ "Running main picosat run"
     result <- runPicosat idx cnf
     case result of 
         Left clauses -> do
             putStrLn "No suitable set of packages could be determined,"
             putStrLn "because the following requirements conflict:"
-            -- print (vcat (map pp clauses))
-            mapM_ print clauses
+            print (nest 4 (vcat (map pp removeClause)))
         Right newAtoms -> do
             let (newSource, newBinaries, _) = splitAtoms newAtoms
             putStrLn "Changes of Sources:"
             printDifference (sources testing) newSource
             putStrLn "Changes of Package:"
             printDifference (binaries testing) newBinaries
+    hPutStrLn stderr $ "Done"
     
 splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
              S.fold select ([],[],[])

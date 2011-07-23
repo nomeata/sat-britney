@@ -59,7 +59,7 @@ transitionRules config unstable testing =
                 Just age <- [src `M.lookup` ages testing],
                 let minAge = fromMaybe (defaultMinAge config) $
                              urgencies testing `combine` minAges config $ src,
-                age < minAge
+                age <= minAge
             ] 
         needsSource = 
             -- a package needs its source
@@ -71,7 +71,8 @@ transitionRules config unstable testing =
             [Not (SrcAtom newer) ("is out of date: " ++ show bin ++ " exists in unstable") |
                 (bin, src) <- M.toList (builtBy unstable),
                 -- TODO: only release architecture here
-                newer <- newerSources unstable ! src
+                newer <- newerSources unstable ! src,
+                newer `S.notMember` sources testing
             ]
         buggy = 
             -- no new RC bugs
