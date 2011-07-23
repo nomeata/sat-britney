@@ -17,15 +17,12 @@ import Data.Time
 import Data.Char
 import Data.Function
 
-import Debian.Control.ByteString
-
+import ControlParser
 import Types
 
 myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
-    control <- parseControlFromFile file >>=
-        either (error . show) (return . unControl)
-    return control
+    parseControlFile file
 
 parseSuite :: Config -> FilePath -> IO SuiteInfo
 parseSuite config dir = do
@@ -46,25 +43,22 @@ parseSuite config dir = do
           {-# SCC "unzipping" #-} unzip4 $ {-# SCC "traverseControl" #-} [
             (atom, (atom, depends), provides, (atom, sourceAtom)) |
             para <- binaries,
-            let Just pkg = fieldValue "Package" para,
-            let Just versionS = fieldValue "Version" para,
-            let version = DebianVersion versionS,
-            let Just archS = fieldValue "Architecture" para,
+            let pkg = packageField para,
+            let version = DebianVersion (versionField para),
+            let archS = architectureField para,
             let arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS),
             let atom = Binary (BinName pkg) version arch,
-            let depends = maybe [] (either (error.show) id . parseDependency) $
-                                fieldValue "Depends" para,
+            let depends = either (error.show) id . parseDependency $ dependsField para,
             let provides = [
                     ((BinName (BS.pack provide), providedArch), [atom]) |
-                    provide <- maybe [] (either (error.show) id . parseProvides) $
-                                fieldValue "Provides" para,
+                    provide <- either (error.show) id . parseProvides $ providesField para,
                     providedArch <- case arch of 
                         ST.Just arch -> [arch]
                         ST.Nothing -> arches config
                     ],
 
-            let sourceS = fromMaybe pkg (fieldValue "Source" para),
-            let (source,sourceVersion) = case BS.words sourceS of
+            let (source,sourceVersion) = case BS.words (sourceField para) of
+                    []     -> (pkg, version)
                     [s,sv] | BS.head sv == '(' && BS.last sv == ')' 
                            -> (s, DebianVersion (BS.init (BS.tail sv)))
                     [s]    -> (s, version),
@@ -126,7 +120,8 @@ parseSuite config dir = do
     hPutStrLn stderr "Reading and parsing dates file"
     ages <- parseAgeFile (dir </> "Dates")
 
-    hPutStrLn stderr "Done reading input files."
+    hPutStrLn stderr $ "Done reading input files, " ++ show (S.size sourceAtoms) ++
+                       " sources, " ++ show (S.size binaries) ++ " binaries."
     return $ SuiteInfo
         sourceAtoms
         binaries
