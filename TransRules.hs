@@ -15,36 +15,36 @@ import Types
 import LitSat
 
 transitionRules config unstable testing =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ buggy ++ dependencies
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ tooyoung ++ buggy ++ dependencies
     , dependencies)
   where keepSrc = 
-            -- First rule: A source that exists both in unstable and in testing has to stay in testing
+            -- A source that exists both in unstable and in testing has to stay in testing
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
                 (name,pkgs) <- M.toList sourcesBoth,
                 let atoms = map SrcAtom (nub pkgs)
             ]
         keepBin = 
-            -- Second rule: A binary that exists both in unstable and in testing has to stay in testing
+            -- A binary that exists both in unstable and in testing has to stay in testing
             [OneOf atoms ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
                 ((name,arch),pkgs) <- M.toList binariesBoth,
                 let atoms = map BinAtom (nub pkgs)
             ]
         uniqueBin = 
-            -- Third rule: At most one binary per name and architecture
+            -- At most one binary per name and architecture
             [AtMostOne (nub pkgs) ("binaries ought to be unique per architecture") |
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map BinAtom (nub pkgs'),
                 length pkgs > 1
             ]
         dependencies =
-            -- Forth rule: Dependencies
+            -- Dependencies
             [Implies (BinAtom bin) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (bin@(Binary _ _ arch),depends) <- M.toList dependsUnion,
                 (disjunction, reason) <- depends,
                 let deps = map BinAtom . nub . concatMap (resolve arch) $ disjunction
             ]
         releaseSync = 
-            -- Fifth rule: release architectures ought to all migrate
+            -- release architectures ought to all migrate
             [Implies (SrcAtom src) [bin] ("release architectures ought to migrate completely") |
                 (src, bins) <- M.toList buildsOnlyUnstable,
                 -- BEWARE: If more than one binary with the same name built by the same
@@ -52,20 +52,29 @@ transitionRules config unstable testing =
                 -- contradict with the unique binary package rule.
                 bin <- BinAtom <$> bins
             ] 
+        tooyoung = 
+            -- packages need to be old enough
+            [Not (SrcAtom src) ("it is " ++ show age ++ " days old, needs " ++ show minAge) |
+                src <- M.keys buildsOnlyUnstable,
+                Just age <- [src `M.lookup` ages testing],
+                let minAge = fromMaybe (defaultMinAge config) $
+                             urgencies testing `combine` minAges config $ src,
+                age < minAge
+            ] 
         needsSource = 
-            -- Sixth rule: a package needs its source
+            -- a package needs its source
             [Implies (BinAtom bin) [SrcAtom src] ("of the DFSG") |
                 (bin, src) <- M.toList (builtBy unstable)
             ]
         outdated = 
-            -- Sixth rule: release architectures ought not to be out of date
+            -- release architectures ought not to be out of date
             [Not (SrcAtom newer) ("is out of date: " ++ show bin ++ " exists in unstable") |
                 (bin, src) <- M.toList (builtBy unstable),
                 -- TODO: only release architecture here
                 newer <- newerSources unstable ! src
             ]
         buggy = 
-            -- Seventh rule: no new RC bugs
+            -- no new RC bugs
             [Implies atom [bug] ("it has this bugs") |
                 (atom, bugs) <- M.toList bugsUnion,
                 bug <- BugAtom <$> nub bugs
@@ -115,3 +124,6 @@ transitionRules config unstable testing =
                 checkArchReq (Just (ArchOnly arches)) = arch `elem` arches
                 checkArchReq (Just (ArchExcept arches)) = arch `notElem` arches
     
+
+combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
+combine m1 m2 x = (x `M.lookup` m1) >>= (`M.lookup` m2)

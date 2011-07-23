@@ -1,7 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 import System.Environment
 import System.FilePath
 import Text.PrettyPrint
-import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad
@@ -20,10 +21,15 @@ import PrettyPrint
 import Picosat
 import LitSat
 
-config = Config all all i386
+minAgeTable = M.fromList [
+    (Urgency "low", Age 10), 
+    (Urgency "high", Age 5)
+    ]
+
+config = Config all all i386 minAgeTable (Age 10)
   where all = [ i386 {- , amd64 -} ]
-        i386 = Arch (BS.pack "i386")
-        amd64 = Arch (BS.pack "amd64")
+        i386 = Arch "i386"
+        amd64 = Arch "amd64"
 
 main = do
     args <- getArgs

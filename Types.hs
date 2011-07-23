@@ -91,11 +91,13 @@ data SuiteInfo = SuiteInfo {
     newerSources :: Map Source [Source],
     bugs :: Map Atom [Bug],
     urgencies :: Map Source Urgency,
-    age :: Map Source Age
+    ages :: Map Source Age
     }
 
 data Config = Config {
     arches :: [Arch],
     releaseArches :: [Arch],
-    archForAll :: Arch
+    archForAll :: Arch,
+    minAges :: Map Urgency Age,
+    defaultMinAge :: Age
     }
