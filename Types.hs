@@ -1,7 +1,7 @@
 module Types where
 
 import Debian.Version
-import Debian.Relation
+import Debian.Relation (VersionReq)
 
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8 (ByteString)
@@ -9,6 +9,7 @@ import qualified Data.Strict as ST
 
 import qualified Data.Set as S
 import qualified Data.Map as M
+import Data.List
 
 type Set = S.Set
 type Map = M.Map
@@ -47,6 +48,16 @@ instance Show Binary where
 instance Show Atom where
     show (SrcAtom src) = show src
     show (BinAtom bin) = show bin
+
+
+data ArchitectureReq
+    = ArchOnly [Arch]
+    | ArchExcept [Arch]
+      deriving Eq
+
+instance Show ArchitectureReq where
+    show (ArchOnly arch) = " [" ++ intercalate " " (map show arch) ++ "]"
+    show (ArchExcept arch) = " [!" ++ intercalate " !" (map show arch) ++ "]"
 
 data DepRel = DepRel !BinName !(Maybe VersionReq) !(Maybe ArchitectureReq)
 		deriving Eq

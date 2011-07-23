@@ -8,7 +8,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import Data.Functor
 
-import Debian.Relation
+import Debian.Relation (checkVersionReq)
 
 import Types
 import LitSat
@@ -69,15 +69,20 @@ transitionRules config unstable testing =
 
         buildsOnlyUnstable = M.difference (builds unstable) (builds testing)
 
-        resolve mbArch (DepRel name mbVerReq mbArchReq) =
-            [ atom |
-                atom@(Binary pkg version _) <- M.findWithDefault [] 
-                    (name, arch) binariesUnion,
-                checkVersionReq mbVerReq (Just version)
-            ] ++ 
-            if isJust mbVerReq then [] else 
-            [ atom |
-                atom <- M.findWithDefault [] (name, arch) providesUnion
-            ]
+        resolve mbArch (DepRel name mbVerReq mbArchReq)
+            | checkArchReq mbArchReq = 
+                [ atom |
+                    atom@(Binary pkg version _) <- M.findWithDefault [] 
+                        (name, arch) binariesUnion,
+                    checkVersionReq mbVerReq (Just version)
+                ] ++ 
+                if isJust mbVerReq then [] else 
+                [ atom |
+                    atom <- M.findWithDefault [] (name, arch) providesUnion
+                ]
+            | otherwise = []
           where arch = ST.fromMaybe (archForAll config) mbArch 
+                checkArchReq Nothing = True
+                checkArchReq (Just (ArchOnly arches)) = arch `elem` arches
+                checkArchReq (Just (ArchExcept arches)) = arch `notElem` arches
     

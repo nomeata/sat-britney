@@ -14,7 +14,7 @@ import System.IO
 
 import Debian.Version.ByteString
 import Debian.Control.ByteString
-import Debian.Relation.Common
+import Debian.Relation.Common (VersionReq(..))
 
 import Types
 
@@ -193,11 +193,11 @@ pMaybeArch =
 -- Some packages (e.g. coreutils) have architecture specs like [!i386
 -- !hppa], even though this doesn't really make sense: once you have
 -- one !, anything else you include must also be (implicitly) a !.
-pArchExcept :: RelParser [String]
-pArchExcept = sepBy (char '!' >> many1 (noneOf [']',' '])) (skipMany1 whiteChar)
+pArchExcept :: RelParser [Arch]
+pArchExcept = map (Arch . BS.pack) <$> sepBy (char '!' >> many1 (noneOf [']',' '])) (skipMany1 whiteChar)
 
-pArchOnly :: RelParser [String]
-pArchOnly = sepBy (many1 (noneOf [']',' '])) (skipMany1 whiteChar)
+pArchOnly :: RelParser [Arch]
+pArchOnly = map (Arch . BS.pack) <$> sepBy (many1 (noneOf [']',' '])) (skipMany1 whiteChar)
 
 
 parseProvides str = parse pProvides (BS.unpack str) str
