@@ -7,6 +7,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad
 import System.IO
+import System.Console.GetOpt
 
 import Debian.Control
 import Debian.Control.ByteString
@@ -30,25 +31,30 @@ minAgeTable = M.fromList [
     (Urgency "emergency", Age 2)
     ]
 
-config = Config all all i386 minAgeTable (Age 10)
-  where all = [
-            i386 
-            --, amd64 
-            , powerpc
-            ]
-        i386 = Arch "i386"
-        amd64 = Arch "amd64"
-        powerpc = Arch "powerpc"
+defaultConfig = Config "." [i386] [i386] i386 minAgeTable (Age 10)
+                       Nothing False Nothing Nothing Nothing
+  where i386 = Arch "i386"
+
+opts =
+    [ Option "d" ["dir"]
+      (ReqArg (\d config -> config { dir = d }) "DIR")
+      "directory containing britney data"
+    ] 
 
 main = do
     args <- getArgs
-    case args of
-        [] -> printUsage
-        [dir] -> runBritney dir
+    name <- getProgName
+    let header = "Usage: " ++ name ++ " [OPTION...]"
+    case getOpt Permute opts args of
+        (o,[],[] ) -> do
+            let config = foldl (flip id) defaultConfig o
+            runBritney config 
+        (_,_,errs) -> do
+            hPutStr stderr $ concat errs ++ usageInfo header opts
 
-runBritney dir = do
-    unstable <- parseSuite config (dir </> "unstable")
-    testing <- parseSuite config (dir </> "testing")
+runBritney config = do
+    unstable <- parseSuite config (dir config </> "unstable")
+    testing <- parseSuite config (dir config </> "testing")
 
     let (rulesT, relaxable) = transitionRules config testing testing
         idxT = allAtoms rulesT
@@ -107,9 +113,6 @@ printDifference old new = do
     putStrLn "Removed:"
     forM_ (S.toList removed) $ \x -> putStrLn $ "    " ++ show x
 
-printUsage = do
-    name <- getProgName
-    putStrLn ("Usage: " ++ name ++ " dir_to_data/")
 
 removeRelated l1 l2 = filter check l1
  where  s = S.fromList [ (atom, reason) | Implies atom _ reason <- l2 ]

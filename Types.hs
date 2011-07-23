@@ -3,6 +3,8 @@ module Types where
 import Debian.Version
 import Debian.Relation (VersionReq)
 
+import System.IO
+
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.Strict as ST
@@ -94,10 +96,17 @@ data SuiteInfo = SuiteInfo {
     ages :: Map Source Age
     }
 
-data Config = Config {
-    arches :: [Arch],
-    releaseArches :: [Arch],
-    archForAll :: Arch,
-    minAges :: Map Urgency Age,
-    defaultMinAge :: Age
+data Config = Config
+    { dir :: FilePath
+    , arches :: [Arch]
+    , releaseArches :: [Arch]
+    , archForAll :: Arch
+    , minAges :: Map Urgency Age
+    , defaultMinAge :: Age
+
+    , relaxationH :: Maybe Handle
+    , verboseRelaxation :: Bool
+    , clausesH :: Maybe Handle
+    , dimacsH :: Maybe Handle
+    , differenceH :: Maybe Handle
     }
