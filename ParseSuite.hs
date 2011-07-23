@@ -90,8 +90,12 @@ parseSuite config dir = do
             source:newer <- tails sorted
             ]
 
+    let binaries = S.fromList binaryAtoms
+
     return $ SuiteInfo
-        (sourceAtoms `S.union` S.fromList binaryAtoms)
+        sourceAtoms
+        binaries
+        (S.mapMonotonic SrcAtom sourceAtoms `S.union` S.mapMonotonic BinAtom binaries) 
         sourceNames
         binaryNames
         builds

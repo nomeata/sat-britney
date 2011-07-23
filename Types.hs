@@ -28,14 +28,25 @@ newtype BinName = BinName { unBinName :: ByteString }
 
 instance Show BinName where show = BS.unpack . unBinName
 
-data Atom = Source !SourceName !DebianVersion
-    | Binary !BinName !DebianVersion !(ST.Maybe Arch)
+data Source = Source !SourceName !DebianVersion
     deriving (Ord, Eq)
 
-instance Show Atom where
+data Binary = Binary !BinName !DebianVersion !(ST.Maybe Arch)
+    deriving (Ord, Eq)
+
+data Atom = SrcAtom !Source | BinAtom !Binary
+    deriving (Ord, Eq)
+
+instance Show Source where
     show (Source sn v)             = show sn ++ "_" ++ show v ++ "_src"
+
+instance Show Binary where
     show (Binary bn v ST.Nothing)  = show bn ++ "_" ++ show v ++ "_all"
     show (Binary bn v (ST.Just a)) = show bn ++ "_" ++ show v ++ "_" ++ show a
+
+instance Show Atom where
+    show (SrcAtom src) = show src
+    show (BinAtom bin) = show bin
 
 data DepRel = DepRel !BinName !(Maybe VersionReq) !(Maybe ArchitectureReq)
 		deriving Eq
@@ -45,14 +56,16 @@ type DepDisj = ([DepRel], ByteString)
 type Dependency = [DepDisj]
 
 data SuiteInfo = SuiteInfo {
+    sources :: S.Set Source,
+    binaries :: S.Set Binary,
     atoms :: S.Set Atom,
-    sourceNames :: Map SourceName [Atom],
-    binaryNames :: Map (BinName, Arch) [Atom],
-    builds :: Map Atom [Atom],
-    builtBy :: Map Atom Atom,
-    depends :: Map Atom Dependency,
-    provides :: Map (BinName, Arch) [Atom],
-    newerSources :: Map Atom [Atom]
+    sourceNames :: Map SourceName [Source],
+    binaryNames :: Map (BinName, Arch) [Binary],
+    builds :: Map Source [Binary],
+    builtBy :: Map Binary Source,
+    depends :: Map Binary Dependency,
+    provides :: Map (BinName, Arch) [Binary],
+    newerSources :: Map Source [Source]
     }
 
 data Config = Config {

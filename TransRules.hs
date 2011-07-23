@@ -6,6 +6,7 @@ import Data.Map ((!))
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
+import Data.Functor
 
 import Debian.Relation
 
@@ -17,40 +18,42 @@ transitionRules config unstable testing =
     , dependencies)
   where keepSrc = 
             -- First rule: A source that exists both in unstable and in testing has to stay in testing
-            [OneOf (nub pkgs) ("source " ++ show name ++ " was in testing before.") |
-                (name,pkgs) <- M.toList sourcesBoth
+            [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
+                (name,pkgs) <- M.toList sourcesBoth,
+                let atoms = map SrcAtom (nub pkgs)
             ]
         keepBin = 
             -- Second rule: A binary that exists both in unstable and in testing has to stay in testing
-            [OneOf (nub pkgs) ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
-                ((name,arch),pkgs) <- M.toList binariesBoth
+            [OneOf atoms ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
+                ((name,arch),pkgs) <- M.toList binariesBoth,
+                let atoms = map BinAtom (nub pkgs)
             ]
         uniqueBin = 
             -- Third rule: At most one binary per name and architecture
             [AtMostOne (nub pkgs) ("binaries ought to be unique per architecture") |
                 ((name,arch),pkgs') <- M.toList binariesBoth,
-                let pkgs = nub pkgs',
+                let pkgs = map BinAtom (nub pkgs'),
                 length pkgs > 1
             ]
         dependencies =
             -- Forth rule: Dependencies
-            [Implies atom (nub deps) ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (atom@(Binary _ _ arch),depends) <- M.toList dependsUnion,
+            [Implies (BinAtom bin) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (bin@(Binary _ _ arch),depends) <- M.toList dependsUnion,
                 (disjunction, reason) <- depends,
-                let deps = concatMap (resolve arch) disjunction
+                let deps = map BinAtom . nub . concatMap (resolve arch) $ disjunction
             ]
         releaseSync = 
             -- Fifth rule: release architectures ought to all migrate
-            [Implies src [bin] ("release architectures ought to migrate completely") |
+            [Implies (SrcAtom src) [bin] ("release architectures ought to migrate completely") |
                 (src, bins) <- M.toList buildsOnlyUnstable,
                 -- BEWARE: If more than one binary with the same name built by the same
                 -- source on the same architecture exists in unstable, this will
                 -- contradict with the unique binary package rule.
-                bin <- bins
+                bin <- BinAtom <$> bins
             ] 
         outdated = 
             -- Sixth rule: release architectures ought not to be out of date
-            [Not newer ("is out of date: " ++ show bin ++ " exists in unstable") |
+            [Not (SrcAtom newer) ("is out of date: " ++ show bin ++ " exists in unstable") |
                 (bin, src) <- M.toList (builtBy unstable),
                 -- TODO: only release architecture here
                 newer <- newerSources unstable ! src
