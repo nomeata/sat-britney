@@ -123,7 +123,7 @@ runBritney config = do
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
-        hPutStr h $ formatCNF (M.keys cnf)
+        hPutStr h $ formatCNF (onlyCNF cnf)
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"

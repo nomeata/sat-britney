@@ -10,12 +10,13 @@ import Data.Function
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Map ((!))
+import qualified Data.HashMap.Lazy as HM
 
 import PrettyPrint
 import LitSat
 import Picosat
 
-type CNF2Clause a = M.Map Conj [Clause a]
+type CNF2Clause a = HM.HashMap Conj [Clause a]
 
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
@@ -24,9 +25,11 @@ allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
         atoms (Implies a as _) = a:as
         atoms (Not a _) = [a]
 
+onlyCNF :: CNF2Clause a -> CNF
+onlyCNF = HM.keys
 
 clauses2CNF :: Ord a => M.Map a () -> [Clause a] -> CNF2Clause a
-clauses2CNF idx clauses = M.fromListWith (++)
+clauses2CNF idx clauses = HM.fromListWith (++)
     [ (conj, [clause]) | clause <- clauses , conj <- clause2CNF idx clause ]
 
 
@@ -42,11 +45,11 @@ clause2CNF idx (Not a _) = [ [-ai] ]
     where ai = M.findIndex a idx + 1
 
 cnf2Clause :: CNF2Clause a -> CNF -> [Clause a]
-cnf2Clause cnf = concatMap (\disj -> cnf ! disj) 
+cnf2Clause cnf = concatMap (\disj -> HM.lookupDefault undefined disj cnf) 
 
 runPicosat :: (Show a, Ord a) => M.Map a () -> CNF2Clause a -> IO (Either [Clause a] (S.Set a))
 runPicosat idx cnf = do
-    result <- runPicosatCNF (M.keys cnf)
+    result <- runPicosatCNF (onlyCNF cnf)
     case result of
         Left core -> do
             return (Left (cnf2Clause cnf core))
@@ -58,5 +61,5 @@ runPicosat idx cnf = do
 
 runRelaxer :: CNF2Clause a -> CNF2Clause a -> IO (Either [Clause a] [Clause a])
 runRelaxer relaxable cnf = do
-    removeCNF <- relaxer (M.keysSet relaxable) (M.keys cnf)
+    removeCNF <- relaxer (S.fromList (HM.keys relaxable)) (onlyCNF cnf)
     return $ either (Left . cnf2Clause cnf) (Right . cnf2Clause cnf) removeCNF
