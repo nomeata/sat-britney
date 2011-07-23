@@ -19,11 +19,17 @@ import Picosat
 type CNF2Clause a = HM.HashMap Conj [Clause a]
 
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
+allAtoms = foldl go M.empty
+  where go m (OneOf as _)     = foldl (\m c -> M.insert c () m) m as
+        go m (AtMostOne as _) = foldl (\m c -> M.insert c () m) m as
+        go m (Implies a as _) = M.insert a () $ foldl (\m c -> M.insert c () m) m as
+        go m (Not a _)        = M.insert a () m
+{-
+Is a slightly optimized version of:
+allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
-  where atoms (OneOf as _) = as
-        atoms (AtMostOne as _) = as
-        atoms (Implies a as _) = a:as
-        atoms (Not a _) = [a]
+-}
+
 
 onlyCNF :: CNF2Clause a -> CNF
 onlyCNF = HM.keys
