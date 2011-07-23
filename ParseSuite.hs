@@ -15,9 +15,7 @@ import System.IO
 import System.Directory
 import Data.Time
 
-import Debian.Version.ByteString
 import Debian.Control.ByteString
-import Debian.Relation.Common (VersionReq(..))
 
 import Types
 
@@ -33,7 +31,7 @@ parseSuite config dir = do
     sources <- myParseControl (dir </>"Sources")
 
     let sourceAtoms = [
-            Source (SourceName pkg) (parseDebianVersion version) |
+            Source (SourceName pkg) (DebianVersion version) |
             para <- sources,
             let Just pkg = fieldValue "Package" para,
             let Just version = fieldValue "Version" para ]
@@ -48,7 +46,7 @@ parseSuite config dir = do
             para <- binaries,
             let Just pkg = fieldValue "Package" para,
             let Just versionS = fieldValue "Version" para,
-            let version = parseDebianVersion versionS,
+            let version = DebianVersion versionS,
             let Just archS = fieldValue "Architecture" para,
             let arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS),
             let atom = Binary (BinName pkg) version arch,
@@ -66,7 +64,7 @@ parseSuite config dir = do
             let sourceS = fromMaybe pkg (fieldValue "Source" para),
             let (source,sourceVersion) = case BS.words sourceS of
                     [s,sv] | BS.head sv == '(' && BS.last sv == ')' 
-                           -> (s, {-# SCC "parseDebianVersion" #-} parseDebianVersion (BS.init (BS.tail sv)))
+                           -> (s, DebianVersion (BS.init (BS.tail sv)))
                     [s]    -> (s, version),
             let sourceAtom = Source (SourceName source) sourceVersion
             ]
@@ -100,7 +98,6 @@ parseSuite config dir = do
     -- Now to the bug file
     hPutStrLn stderr "Reading and parsing bugs file"
     bugS <- BS.readFile (dir </> "BugsV")
-    hPutStrLn stderr "Done reading input files."
 
     let rawBugs = {-# SCC "rawBugs" #-} M.fromList [ (pkg, bugs) |
             line <- BS.lines bugS,
@@ -120,6 +117,7 @@ parseSuite config dir = do
             ) atoms
 
     -- Now the URGENCY file (may not exist)
+    hPutStrLn stderr "Reading and parsing urgency file"
     urgencyS <- do
         let file = dir </> "Urgency"
         ex <- doesFileExist file
@@ -129,11 +127,12 @@ parseSuite config dir = do
             line <- BS.lines urgencyS,
             not (BS.null line),
             let [pkg,version,urgencyS] = BS.words line,
-            let src = Source (SourceName pkg) ({-# SCC "parseDebianVersion" #-} parseDebianVersion version),
+            let src = Source (SourceName pkg) (DebianVersion version),
             let urgency = Urgency urgencyS
             ]
 
     -- Now the Dates file (may not exist)
+    hPutStrLn stderr "Reading and parsing dates file"
     dateS <- do
         let file = dir </> "Dates"
         ex <- doesFileExist file
@@ -146,10 +145,11 @@ parseSuite config dir = do
             line <- BS.lines dateS,
             not (BS.null line),
             let [pkg,version,dayS] = BS.words line,
-            let src = Source (SourceName pkg) ({-# SCC "parseDebianVersion" #-} parseDebianVersion version),
+            let src = Source (SourceName pkg) (DebianVersion version),
             let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
             ]
 
+    hPutStrLn stderr "Done reading input files."
     return $ SuiteInfo
         sourceAtoms
         binaries
@@ -213,7 +213,7 @@ pMaybeVerReq =
        version <- many1 (noneOf [' ',')','\t','\n'])
        skipMany whiteChar
        char ')'
-       return $ Just (op ({-# SCC "parseDebianVersion" #-} parseDebianVersion version))
+       return $ Just (op (DebianVersion (BS.pack version)))
     <|>
     do return $ Nothing
 

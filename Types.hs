@@ -1,7 +1,6 @@
 module Types where
 
-import Debian.Version
-import Debian.Relation (VersionReq)
+import Debian.Version.ByteString (parseDebianVersion)
 
 import System.IO
 
@@ -12,9 +11,27 @@ import qualified Data.Strict as ST
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.List
+import Data.Function
 
 type Set = S.Set
 type Map = M.Map
+
+newtype DebianVersion = DebianVersion { unDebianVersion :: ByteString }
+    deriving (Ord, Eq)
+instance Show DebianVersion where show = BS.unpack . unDebianVersion
+
+data VersionReq
+    = SLT DebianVersion
+    | LTE DebianVersion
+    | EEQ  DebianVersion
+    | GRE  DebianVersion
+    | SGR DebianVersion
+      deriving Eq
+
+cmpDebianVersion = compare `on` extrDV
+
+extrDV = parseDebianVersion . unDebianVersion
+
 
 newtype Arch = Arch { unArch :: ByteString }
     deriving (Ord, Eq)

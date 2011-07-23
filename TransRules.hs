@@ -9,8 +9,6 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import Data.Functor
 
-import Debian.Relation (checkVersionReq)
-
 import Types
 import LitSat
 
@@ -134,6 +132,17 @@ transitionRules config unstable testing =
                 checkArchReq Nothing = True
                 checkArchReq (Just (ArchOnly arches)) = arch `elem` arches
                 checkArchReq (Just (ArchExcept arches)) = arch `notElem` arches
+
+-- |Check if a version number satisfies a version requirement.
+checkVersionReq :: Maybe VersionReq -> Maybe DebianVersion -> Bool
+checkVersionReq Nothing _ = True
+checkVersionReq _ Nothing = False
+checkVersionReq (Just (SLT v1)) (Just v2) = extrDV v2 < extrDV v1
+checkVersionReq (Just (LTE v1)) (Just v2) = extrDV v2 <= extrDV v1
+checkVersionReq (Just (EEQ v1)) (Just v2) = extrDV v2 == extrDV v1
+checkVersionReq (Just (GRE v1)) (Just v2) = extrDV v2 >= extrDV v1
+checkVersionReq (Just (SGR v1)) (Just v2) = extrDV v2 > extrDV v1
+
     
 
 combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
