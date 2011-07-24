@@ -36,8 +36,8 @@ parseCNF str =
     dropWhile (\l -> BS.null l || BS.head l `elem` "cp") $
     BS.lines str
 
-runPicosatCNF :: CNF -> IO (Either CNF [Int])
-runPicosatCNF cnf = do
+runPicosat :: CNF -> IO (Either CNF [Int])
+runPicosat cnf = do
     let cnfString = formatCNF cnf
 
     (coreInFd, coreOutFd) <- createPipe
@@ -84,7 +84,7 @@ runPicosatCNF cnf = do
 relaxer :: S.Set Conj -> CNF -> IO (Either CNF CNF)
 relaxer relaxable = go 
   where go cnf = do
-            ret <- runPicosatCNF cnf
+            ret <- runPicosat cnf
             case ret of
                 Left mus -> do
                     case find (`S.member` relaxable) mus of

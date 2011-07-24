@@ -130,7 +130,7 @@ runBritney config = do
         hPrint h $ nest 4 (vcat (map pp cleanedRules))
 
     hPutStrLn stderr $ "Running main picosat run"
-    result <- runPicosat cnf
+    result <- runClauseSAT cnf
     case result of 
         Left clauses -> do
             putStrLn "No suitable set of packages could be determined,"
