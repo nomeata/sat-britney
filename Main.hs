@@ -99,9 +99,8 @@ runBritney config = do
     general <- parseGeneralInfo config ai
 
     let (rulesT, relaxable) = transitionRules config ai testing testing general
-        idxT = allAtoms rulesT
-        cnfT = clauses2CNF idxT rulesT
-        relaxableClauses = clauses2CNF idxT relaxable
+        cnfT = clauses2CNF rulesT
+        relaxableClauses = clauses2CNF relaxable
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
     removeClauseE <- runRelaxer relaxableClauses cnfT
@@ -120,8 +119,7 @@ runBritney config = do
 
     let (rules, _) = transitionRules config ai unstable testing general
         cleanedRules = rules `removeRelated` removeClause
-        idx = allAtoms cleanedRules
-        cnf = clauses2CNF idx cleanedRules
+        cnf = clauses2CNF cleanedRules
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
@@ -132,7 +130,7 @@ runBritney config = do
         hPrint h $ nest 4 (vcat (map pp cleanedRules))
 
     hPutStrLn stderr $ "Running main picosat run"
-    result <- runPicosat idx cnf
+    result <- runPicosat cnf
     case result of 
         Left clauses -> do
             putStrLn "No suitable set of packages could be determined,"
