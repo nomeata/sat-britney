@@ -11,6 +11,8 @@ import Data.List
 import Data.Ord
 import Data.Maybe
 import Data.Function
+import System.Directory
+import Distribution.Simple.Utils (withTempFile)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -133,19 +135,15 @@ runPicosatPMAX desired cnf = do
                     whatsLeft cnf' solution desired
 
 runMSUnCore :: CNF -> [Int] -> IO [Int]
-runMSUnCore cnf desired = do
+runMSUnCore cnf desired = getTemporaryDirectory  >>= \tmpdir ->
+    withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
-    writeFile "/tmp/msuncore.dimacs" cnfString
+    hPutStr handle cnfString
+    hClose handle
 
     (Just hint, Just hout, _, procHandle) <- createProcess $
-        (proc "./msuncore" ["/proc/self/fd/0"])
-        { std_in = CreatePipe
-        , std_out = CreatePipe
-        }
-
-    hPutStr hint cnfString
-    hClose hint
+        (proc "./msuncore" [tmpfile]) { std_out = CreatePipe }
     
     result <- fix $ \next -> do
         line <- hGetLine hout
