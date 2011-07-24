@@ -25,10 +25,10 @@ reorder = sortBy (compare `on` abs)
 formatCNF :: CNF -> String
 formatCNF cnf =
     "c LitSat CNF generator\n" ++
-    "p cnf " ++ show (safeMax (map abs (concat cnf))) ++ " " ++ show (length cnf) ++ "\n" ++
+    "p cnf " ++ show maxVer ++ " " ++ show (length cnf) ++ "\n" ++
     concatMap (\l -> unwords (map show l) ++ " 0\n") cnf
-  where safeMax [] = 0
-        safeMax l = maximum l
+  where maxVer = {-# SCC "maxVer" #-} foldl' (\n c -> foldl' (max `on` abs) n c) 0 cnf
+
 
 parseCNF :: BS.ByteString -> CNF
 parseCNF str =
