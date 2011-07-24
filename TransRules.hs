@@ -104,7 +104,7 @@ transitionRules config ai unstable testing general =
             ]
 
         -- Some duplication wrt above code
-        obsoleteSource = S.fromList [ s |
+        obsoleteSource = S.fromList [ src |
                 (src, bins) <- M.toList buildsOnlyUnstable,
                 (s:_) <- [newerSources unstable ! src]
             ]
