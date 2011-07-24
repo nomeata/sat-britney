@@ -6,6 +6,7 @@ import Text.PrettyPrint
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Monad
 import System.IO
 import System.Console.GetOpt
@@ -141,7 +142,7 @@ runBritney config = do
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
-        hPutStr h $ formatCNF (onlyCNF cnf)
+        L.hPut h $ formatCNF (onlyCNF cnf)
         hFlush h
 
     mbDo (clausesH config) $ \h -> do

@@ -1,5 +1,6 @@
 module Picosat where
 
+import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Nums.Careless
 
@@ -13,39 +14,49 @@ import Data.Maybe
 import Data.Function
 import System.Directory
 import Distribution.Simple.Utils (withTempFile)
+import Control.Arrow ((***))
 
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Map ((!))
 
 type CNF = [Conj]
-type Conj = [Int]
+-- Conj is in DIMACS format, e.g. list of digits, followed by "0\n"
+-- Also, remember largest variable
+type Conj = (BS.ByteString, Int)
 
-reorder :: Conj -> Conj
-reorder = sortBy (compare `on` abs)
+reorder :: [Int] -> Conj
+reorder ls = m `seq` (BS.pack $ unwords (map show (sortBy (compare `on` abs) ls)) ++ " 0\n" , m)
+  where m = maximum (map abs ls)
 
-formatCNF :: CNF -> String
-formatCNF cnf =
-    "c LitSat CNF generator\n" ++
-    "p cnf " ++ show maxVer ++ " " ++ show (length cnf) ++ "\n" ++
-    concatMap (\l -> unwords (map show l) ++ " 0\n") cnf
-  where maxVer = {-# SCC "maxVer" #-} foldl' (\n c -> foldl' (max `on` abs) n c) 0 cnf
+atom2Conj :: Int -> Conj
+atom2Conj i = (BS.pack $ show i ++ " 0\n", i)
 
-formatCNFPMAX :: CNF -> [Int] -> String
-formatCNFPMAX cnf desired =
-    "c LitSat CNF generator\n" ++
-    unwords ["p", "wcnf", show maxVer, show (numClauses + numDesired), top ] ++ "\n" ++
-    concatMap (\l -> top ++ " " ++ unwords (map show l) ++ " 0\n") cnf ++ 
-    concatMap (\i -> "1" ++ " " ++ show i ++ " 0\n") desired
-  where maxVer = {-# SCC "maxVer" #-} foldl' (\n c -> foldl' (max `on` abs) n c) 0 cnf
-        numClauses = length cnf
+formatCNF :: CNF -> L.ByteString
+formatCNF cnf = L.concat
+    [ L.pack "c LitSat CNF generator\n"
+    , L.pack $unwords ["p", "cnf", show maxVer, show numClauses] ++ "\n"
+    , body
+    ]
+  where numClauses = length cnf
+        (body, maxVer) = (L.fromChunks *** maximum) (unzip cnf)
+
+formatCNFPMAX :: CNF -> [Int] -> L.ByteString
+formatCNFPMAX cnf desired = L.concat $
+    [ L.pack "c LitSat CNF generator\n"
+    , L.pack $ unwords ["p", "wcnf", show maxVer, show (numClauses + numDesired), topN ] ++ "\n"
+    , body ] ++
+    map (\i -> L.pack $ "1 " ++ show i ++ " 0\n") desired
+  where numClauses = length cnf
         numDesired = length desired
-        top = show (numDesired + 1)
+        topN = show (numDesired + 1)
+        top = BS.pack (topN ++ " ")
+        (body, maxVer) = (L.fromChunks . (top:) . intersperse top *** maximum) (unzip cnf)
 
 
 parseCNF :: BS.ByteString -> CNF
 parseCNF str =
-    map (init . map int . BS.words) $
+    map (reorder . init . map int . BS.words) $
     dropWhile (\l -> BS.null l || BS.head l `elem` "cp") $
     BS.lines str
 
@@ -63,7 +74,7 @@ runPicosat cnf = do
         }
 
     closeFd coreOutFd
-    hPutStr hint cnfString
+    L.hPut hint cnfString
     hClose hint
     
     result <- fix $ \next -> do
@@ -104,7 +115,7 @@ relaxer relaxable = go
                         Just remove -> fmap (remove:) <$> go (remove `delete` cnf)
                         Nothing -> do
                             hPutStrLn stderr $ "No relaxable clause in MUS:"
-                            hPutStr stderr $ (formatCNF mus)
+                            L.hPut stderr $ formatCNF mus
                             return (Left mus)
                 Right _ -> do
                     return (Right [])
@@ -118,18 +129,18 @@ runPicosatPMAX desired cnf = do
     case ret of
         Left mus -> return (Left mus)
         Right solution -> Right <$> runMSUnCore cnf desired -- whatsLeft cnf solution desired 
-  where whatsLeft cnf solution desired = tryForce (map (:[]) done ++ cnf) solution todo
+  where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
           where solSet = S.fromList solution
                 (done,todo) = partition (`S.member` solSet) desired
         tryForce cnf lastSol [] = return lastSol
         tryForce cnf lastSol (force:desired) = do
-            let cnf' = [force] : cnf
+            let cnf' = atom2Conj force : cnf
             hPutStr stderr $ "Forcing one, " ++ show (length desired) ++ " left to do."
             ret <- runPicosat cnf'
             case ret of
                 Left _ -> do
                     hPutStrLn stderr $ "failed"
-                    tryForce ([-force] : cnf) lastSol desired
+                    tryForce (atom2Conj (-force) : cnf) lastSol desired
                 Right solution -> do
                     hPutStrLn stderr $ "failed"
                     whatsLeft cnf' solution desired
@@ -139,11 +150,11 @@ runMSUnCore cnf desired = getTemporaryDirectory  >>= \tmpdir ->
     withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
-    hPutStr handle cnfString
+    L.hPut handle cnfString
     hClose handle
 
-    (Just hint, Just hout, _, procHandle) <- createProcess $
-        (proc "./msuncore" [tmpfile]) { std_out = CreatePipe }
+    (_, Just hout, _, procHandle) <- createProcess $
+        (proc "./msuncore" ["-v", "0", tmpfile]) { std_out = CreatePipe }
     
     result <- fix $ \next -> do
         line <- hGetLine hout
