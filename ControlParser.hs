@@ -42,7 +42,7 @@ addField l para =
     if n == "Architecture" then para { architectureField = v } else
     if n == "Depends"      then para { dependsField = v } else
     if n == "Provides"     then para { providesField = v } else
-    if n == "Souce"        then para { sourceField = v } else
+    if n == "Source"       then para { sourceField = v } else
     para
  where (n,v') = DBS.breakByte colon l
        v = BS.dropWhile isSpace (BS.tail v')

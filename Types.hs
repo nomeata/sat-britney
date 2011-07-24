@@ -120,7 +120,9 @@ type Dependency = [DepDisj]
 {- Atom index counter stuff -}
 
 newtype Index a = Index { unIndex :: Int }
- deriving (Show, Eq, Ord, NFData)
+ deriving (Eq, Ord, NFData)
+instance Show (Index a) where show (Index i ) = "I" ++ show i
+
 type Counter = Int
 
 type BinI = Index Binary
