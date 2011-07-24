@@ -86,8 +86,9 @@ transitionRules config ai unstable testing general =
         obsolete = 
             {-# SCC "obsolete" #-}
             -- never add a source package to testing that is already superceded
-            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` src)) |
-                src <- S.toList obsoleteSource
+            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` s)) |
+                (src, bins) <- M.toList buildsOnlyUnstable,
+                (s:_) <- [newerSources unstable ! src]
             ]
         buggy = 
             {-# SCC "buggy1" #-}
@@ -102,6 +103,7 @@ transitionRules config ai unstable testing general =
                 atom <- genIndex <$> S.toList forbiddenBugs
             ]
 
+        -- Some duplication wrt above code
         obsoleteSource = S.fromList [ s |
                 (src, bins) <- M.toList buildsOnlyUnstable,
                 (s:_) <- [newerSources unstable ! src]
