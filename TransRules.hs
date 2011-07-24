@@ -13,7 +13,7 @@ import Types
 import LitSat
 
 transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ tooyoung ++ buggy ++ dependencies
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ dependencies
     , dependencies)
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
@@ -80,6 +80,13 @@ transitionRules config ai unstable testing general =
                 -- TODO: only release architecture here
                 newer <- newerSources unstable ! src,
                 newer `S.notMember` sources testing
+            ]
+        obsolete = 
+            {-# SCC "obsolete" #-}
+            -- never add a source package to testing that is already superceded
+            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` s)) |
+                (src, bins) <- M.toList buildsOnlyUnstable,
+                (s:_) <- [newerSources unstable ! src]
             ]
         buggy = 
             {-# SCC "buggy1" #-}
