@@ -15,6 +15,7 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.List
 import Data.Function
+import Data.Functor
 import DebVersionCmp
 
 type Set = S.Set
@@ -116,23 +117,71 @@ type DepDisj = ([DepRel], ByteString)
 
 type Dependency = [DepDisj]
 
+{- Atom index counter stuff -}
+
+newtype Index a = Index { unIndex :: Int }
+ deriving (Show, Eq, Ord, NFData)
+type Counter = Int
+
+type BinI = Index Binary
+type SrcI = Index Source
+type BugI = Index Bug
+type AtomI = Index Atom
+
+genIndex :: Index a -> Index Atom
+genIndex (Index i) = Index i
+
+type AtomIndex = (M.Map Atom Int, M.Map Int Atom, Int)
+
+emptyIndex :: AtomIndex
+emptyIndex = (M.empty, M.empty, 1)
+
+indexBin :: AtomIndex -> Binary -> Maybe BinI
+indexBin (m,_,_) b = Index <$> BinAtom b `M.lookup` m
+indexSrc :: AtomIndex -> Source -> Maybe SrcI
+indexSrc (m,_,_) s = Index <$> SrcAtom s `M.lookup` m
+indexBug :: AtomIndex -> Bug -> Maybe BugI
+indexBug (m,_,_) b = Index <$> BugAtom b `M.lookup` m
+
+addBin :: AtomIndex -> Binary -> (AtomIndex, BinI)
+addBin a2i@(m,m',c) b = case indexBin a2i b of
+                    Just i -> (a2i, i)
+                    Nothing -> (((BinAtom b `M.insert` c) m, (c `M.insert` BinAtom b) m', succ c), Index c)
+addSrc :: AtomIndex -> Source -> (AtomIndex, SrcI)
+addSrc a2i@(m,m',c) b = case indexSrc a2i b of
+                    Just i -> (a2i, i)
+                    Nothing -> (((SrcAtom b `M.insert` c) m, (c `M.insert` SrcAtom b) m', succ c), Index c)
+addBug :: AtomIndex -> Bug -> (AtomIndex, BugI)
+addBug a2i@(m,m',c) b = case indexBug a2i b of
+                    Just i -> (a2i, i)
+                    Nothing -> (((BugAtom b `M.insert` c) m, (c `M.insert` BugAtom b) m', succ c), Index c)
+
+lookupBin :: AtomIndex -> BinI -> Binary
+lookupBin (_,m,_) (Index i) = (\(BinAtom b) -> b) (m M.! i)
+lookupSrc :: AtomIndex -> SrcI -> Source
+lookupSrc (_,m,_) (Index i) = (\(SrcAtom b) -> b) (m M.! i)
+lookupBug :: AtomIndex -> BugI -> Bug
+lookupBug (_,m,_) (Index i) = (\(BugAtom b) -> b) (m M.! i)
+lookupAtom :: AtomIndex -> AtomI -> Atom
+lookupAtom (_,m,_) (Index i) = m M.! i
+
 data SuiteInfo = SuiteInfo {
-    sources :: S.Set Source,
-    binaries :: S.Set Binary,
-    atoms :: S.Set Atom,
-    sourceNames :: Map SourceName [Source],
-    binaryNames :: Map (BinName, Arch) [Binary],
-    builds :: Map Source [Binary],
-    builtBy :: Map Binary Source,
-    depends :: Map Binary Dependency,
-    provides :: Map (BinName, Arch) [Binary],
-    newerSources :: Map Source [Source],
-    bugs :: Map Atom [Bug]
+    sources :: S.Set SrcI,
+    binaries :: S.Set BinI,
+    atoms :: S.Set AtomI,
+    sourceNames :: Map SourceName [SrcI],
+    binaryNames :: Map (BinName, Arch) [BinI],
+    builds :: Map SrcI [BinI],
+    builtBy :: Map BinI SrcI,
+    depends :: Map BinI Dependency,
+    provides :: Map (BinName, Arch) [BinI],
+    newerSources :: Map SrcI [SrcI],
+    bugs :: Map AtomI [BugI]
     }
 
 data GeneralInfo = GeneralInfo {
-    urgencies :: Map Source Urgency,
-    ages :: Map Source Age
+    urgencies :: Map SrcI Urgency,
+    ages :: Map SrcI Age
     }
 
 data Config = Config

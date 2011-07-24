@@ -93,11 +93,12 @@ main = do
         (_,_,errs) -> usage 
 
 runBritney config = do
-    unstable <- parseSuite config (dir config </> "unstable")
-    testing <- parseSuite config (dir config </> "testing")
-    general <- parseGeneralInfo config
+    let ai1 = emptyIndex
+    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable")
+    (testing, ai)  <- parseSuite config ai2 (dir config </> "testing")
+    general <- parseGeneralInfo config ai
 
-    let (rulesT, relaxable) = transitionRules config testing testing general
+    let (rulesT, relaxable) = transitionRules config ai testing testing general
         idxT = allAtoms rulesT
         cnfT = clauses2CNF idxT rulesT
         relaxableClauses = clauses2CNF idxT relaxable
@@ -117,7 +118,7 @@ runBritney config = do
             return removeClause
 
 
-    let (rules, _) = transitionRules config unstable testing general
+    let (rules, _) = transitionRules config ai unstable testing general
         cleanedRules = rules `removeRelated` removeClause
         idx = allAtoms cleanedRules
         cnf = clauses2CNF idx cleanedRules
@@ -137,14 +138,15 @@ runBritney config = do
             putStrLn "No suitable set of packages could be determined,"
             putStrLn "because the following requirements conflict:"
             putStrLn "(This should not happen, as this is detected earlier)"
-            print (nest 4 (vcat (map pp removeClause)))
-        Right newAtoms -> do
+            print (nest 4 (vcat (map pp clauses)))
+        Right newAtomIs -> do
             mbDo (differenceH config) $ \h -> do
+                let newAtoms = S.map (ai `lookupAtom`) newAtomIs
                 let (newSource, newBinaries, _) = splitAtoms newAtoms
                 hPutStrLn h "Changes of Sources:"
-                printDifference h (sources testing) newSource
+                printDifference h (S.map (ai `lookupSrc`) $ sources testing) newSource
                 hPutStrLn h "Changes of Package:"
-                printDifference h (binaries testing) newBinaries
+                printDifference h (S.map (ai `lookupBin`) $ binaries testing) newBinaries
     hPutStrLn stderr $ "Done"
     
 splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .

@@ -28,6 +28,8 @@ instance PP a => PP (Clause a) where
 
 instance PP Atom where pp a = text (show a)
 
+instance PP (Index a) where pp a = text (show a)
+
 listSep :: Doc -> Doc -> [Doc] -> Doc
 listSep sep1 sep2 = go
   where go [] = empty

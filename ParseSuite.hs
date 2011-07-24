@@ -17,6 +17,7 @@ import Data.Time
 import Data.Char
 import Data.Function
 import Control.DeepSeq
+import Control.Arrow (first)
 
 import ControlParser
 import Types
@@ -25,8 +26,8 @@ myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
     parseControlFile file
 
-parseSuite :: Config -> FilePath -> IO SuiteInfo
-parseSuite config dir = do
+parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, AtomIndex)
+parseSuite config ai dir = do
     {-
     sources <- myParseControl (dir </>"Sources")
 
@@ -40,31 +41,31 @@ parseSuite config dir = do
     binaries <- concat <$>
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
-    let (binaryAtoms, binaryDepends, binaryProvides, builtByList) =
-          {-# SCC "unzipping" #-} unzip4 $ {-# SCC "traverseControl" #-} [
-            (atom, (atom, depends), provides, (atom, sourceAtom)) |
-            para <- binaries,
-            let pkg = packageField para,
-            let version = DebianVersion (versionField para),
-            let archS = architectureField para,
-            let arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS),
-            let atom = Binary (BinName pkg) version arch,
-            let depends = either (error.show) id . parseDependency $ dependsField para,
-            let provides = [
-                    ((BinName (BS.pack provide), providedArch), [atom]) |
+    let (binaryAtoms, binaryDepends, binaryProvides, builtByList, ai') = readPara ai binaries
+        readPara ai [] = ([], [], [], [], ai)
+        readPara ai (para:ps) = (binI:bins, (binI,depends):deps, provides ++ provs, (binI,srcI): bb,finalAi)
+          where (bins, deps, provs, bb, finalAi) = readPara ai'' ps
+                pkg = packageField para
+                version = DebianVersion (versionField para)
+                archS = architectureField para
+                arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS)
+                atom = Binary (BinName pkg) version arch
+                (ai',binI) = addBin ai atom
+                depends = either (error.show) id . parseDependency $ dependsField para
+                provides = [
+                    ((BinName (BS.pack provide), providedArch), [binI]) |
                     provide <- either (error.show) id . parseProvides $ providesField para,
                     providedArch <- case arch of 
                         ST.Just arch -> [arch]
                         ST.Nothing -> arches config
-                    ],
-
-            let (source,sourceVersion) = case BS.words (sourceField para) of
+                    ]
+                (source,sourceVersion) = case BS.words (sourceField para) of
                     []     -> (pkg, version)
                     [s,sv] | BS.head sv == '(' && BS.last sv == ')' 
                            -> (s, DebianVersion (BS.init (BS.tail sv)))
-                    [s]    -> (s, version),
-            let sourceAtom = Source (SourceName source) sourceVersion
-            ]
+                    [s]    -> (s, version)
+                sourceAtom = Source (SourceName source) sourceVersion
+                (ai'', srcI) = addSrc ai' sourceAtom
 
     hPutStrLn stderr $ "Calculating builtBy"
     let builtBy = {-# SCC "builtBy" #-} M.fromList builtByList
@@ -79,14 +80,14 @@ parseSuite config dir = do
     depends `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating provides"
-    let provides = {-# SCC "provides" #-} M.fromList (concat binaryProvides)
+    let provides = {-# SCC "provides" #-} M.fromList binaryProvides
     provides `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating binaryNames"
     let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) 
-            [ ((pkg,arch), [atom]) |
-                atom <- binaryAtoms,
-                let Binary pkg _ mbArch = atom,
+            [ ((pkg,arch), [binI]) |
+                binI <- binaryAtoms,
+                let Binary pkg _ mbArch = ai' `lookupBin` binI,
                 arch <- case mbArch of { ST.Just arch -> [arch] ; ST.Nothing -> arches config }
                 ]
     binaryNames `deepseq` return ()
@@ -99,13 +100,15 @@ parseSuite config dir = do
 
     hPutStrLn stderr $ "Calculating sourceNames"
     let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++)
-            [ (pkg, [atom]) | atom@(Source pkg _) <- S.toList sourceAtoms ]
+            [ (pkg, [srcI]) | srcI <- S.toList sourceAtoms,
+                              let Source pkg _  = ai' `lookupSrc` srcI ]
     sourceNames `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating newerSources"
     let newerSources = {-# SCC "newerSource" #-} M.fromListWith (++) [ (source, newer) |
-            sources <- M.elems sourceNames, 
-            let sorted = sortBy (cmpDebianVersion `on` (\(Source _ v) -> v)) sources,
+            srcIs <- M.elems sourceNames, 
+            let sources = [ (v, srcI) | srcI <- srcIs , let Source _ v  = ai' `lookupSrc` srcI ],
+            let sorted = map snd $ sortBy (cmpDebianVersion `on` fst) sources,
             source:newer <- tails sorted
             ]
     newerSources `deepseq` return ()
@@ -115,21 +118,23 @@ parseSuite config dir = do
     binaries `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating atoms"
-    let atoms = {-# SCC "atoms" #-} S.mapMonotonic SrcAtom sourceAtoms `S.union` S.mapMonotonic BinAtom binaries
+    let atoms = {-# SCC "atoms" #-} S.mapMonotonic genIndex sourceAtoms `S.union` S.mapMonotonic genIndex binaries
     atoms `deepseq` return ()
 
     -- Now to the bug file
     hPutStrLn stderr "Reading and parsing bugs file"
     bugS <- BS.readFile (dir </> "BugsV")
 
-    let rawBugs = {-# SCC "rawBugs" #-} M.fromList [ (pkg, bugs) |
-            line <- BS.lines bugS,
-            not (BS.null line),
-            let [pkg,buglist] = BS.words line,
-            let bugs = Bug . int <$> BS.split ',' buglist
-            ]
+    let (rawBugs, ai'') = {-# SCC "rawBugs" #-} first M.fromList $ addBugList ai' (BS.lines bugS)
+        addBugList finalAi [] = ([], finalAi)
+        addBugList ai (l:ls) = if BS.null l 
+                               then addBugList ai ls
+                               else first ((pkg, bugIs):) (addBugList ai' ls)
+          where [pkg,buglist] = BS.words l
+                bugs = Bug . int <$> BS.split ',' buglist
+                (ai',bugIs) = mapAccumL addBug ai bugs
     
-    let bugs = {-# SCC "bugs" #-} set2MapNonEmpty (\atom -> case atom of
+    let bugs = {-# SCC "bugs" #-} set2MapNonEmpty (\i -> case ai'' `lookupAtom` i of
             SrcAtom (Source sn' _) ->
                 let sn = unSourceName sn'
                 in  M.findWithDefault [] sn rawBugs ++
@@ -142,10 +147,10 @@ parseSuite config dir = do
 
     hPutStrLn stderr $ "Done reading input files, " ++ show (S.size sourceAtoms) ++
                        " sources, " ++ show (S.size binaries) ++ " binaries."
-    return $ SuiteInfo
+    return $ (SuiteInfo
         sourceAtoms
         binaries
-        (S.mapMonotonic SrcAtom sourceAtoms `S.union` S.mapMonotonic BinAtom binaries) 
+        atoms
         sourceNames
         binaryNames
         builds
@@ -154,50 +159,53 @@ parseSuite config dir = do
         provides
         newerSources
         bugs
+        , ai'')
 
-parseGeneralInfo :: Config -> IO GeneralInfo
-parseGeneralInfo config = do 
+parseGeneralInfo :: Config -> AtomIndex -> IO GeneralInfo
+parseGeneralInfo config ai = do 
     -- Now the URGENCY file (may not exist)
     hPutStrLn stderr "Reading and parsing urgency file"
-    urgencies <- parseUrgencyFile (dir config </> "testing" </> "Urgency")
+    urgencies <- parseUrgencyFile (dir config </> "testing" </> "Urgency") ai
     urgencies `deepseq` return ()
 
     -- Now the Dates file (may not exist)
     hPutStrLn stderr "Reading and parsing dates file"
-    ages <- parseAgeFile (dir config </> "teting" </> "Dates")
+    ages <- parseAgeFile (dir config </> "teting" </> "Dates") ai
     ages `deepseq` return ()
 
     hPutStrLn stderr $ "Done reading general input files"
     return $ GeneralInfo urgencies ages
 
-parseUrgencyFile :: FilePath -> IO (M.Map Source Urgency)
-parseUrgencyFile file = do
+parseUrgencyFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Urgency)
+parseUrgencyFile file ai = do
     ex <- doesFileExist file
     urgencyS <- if ex then BS.readFile file else return BS.empty
 
-    return $ M.fromList [ (src, urgency) | 
+    return $ M.fromList [ (srcI, urgency) | 
             line <- BS.lines urgencyS,
             not (BS.null line),
             let [pkg,version,urgencyS] = BS.words line,
             not (isAlpha (BS.head version)),
             let src = Source (SourceName pkg) (DebianVersion version),
+            Just srcI <- [ai `indexSrc` src],
             let urgency = Urgency urgencyS
             ]
 
-parseAgeFile :: FilePath -> IO (M.Map Source Age)
-parseAgeFile file = do
+parseAgeFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Age)
+parseAgeFile file ai = do
     ex <- doesFileExist file
     dateS <- if ex then BS.readFile file else return BS.empty
 
     -- Timeszone?
     now <- utctDay <$> getCurrentTime
     let epochDay = fromGregorian 1970 1 1
-    return $ M.fromList [ (src, Age age) | 
+    return $ M.fromList [ (srcI, Age age) | 
             line <- BS.lines dateS,
             not (BS.null line),
             let [pkg,version,dayS] = BS.words line,
             not (BS.pack "upl" `BS.isPrefixOf` version),
             let src = Source (SourceName pkg) (DebianVersion version),
+            Just srcI <- [ai `indexSrc` src],
             let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
             ]
 
