@@ -2,6 +2,7 @@
 module ParseSuite where
 
 import System.FilePath
+import System.Exit
 import Data.Functor
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -171,8 +172,11 @@ parseGeneralInfo config ai = do
 
     -- Now the Dates file (may not exist)
     hPutStrLn stderr "Reading and parsing dates file"
-    ages <- parseAgeFile (dir config </> "testing" </> "Dates") ai
+    ages <- maybe id (M.delete) (migrateThisI config) <$>
+        parseAgeFile (dir config </> "testing" </> "Dates") ai
     ages `deepseq` return ()
+
+
 
     hPutStrLn stderr $ "Done reading general input files"
     return $ GeneralInfo urgencies ages

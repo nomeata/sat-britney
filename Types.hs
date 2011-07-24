@@ -199,6 +199,9 @@ data Config = Config
     , clausesH :: Maybe Handle
     , dimacsH :: Maybe Handle
     , differenceH :: Maybe Handle
+
+    , migrateThis :: Maybe Source
+    , migrateThisI :: Maybe SrcI
     }
 
 mbDo Nothing _ = return ()

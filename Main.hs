@@ -35,8 +35,9 @@ minAgeTable = M.fromList [
     (Urgency "emergency", Age 2)
     ]
 
+defaultConfig :: Config
 defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10)
-                       Nothing False Nothing Nothing Nothing
+                       Nothing False Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
 allArches = map (Arch . BS.pack) $ words
@@ -45,10 +46,15 @@ allArches = map (Arch . BS.pack) $ words
 openH "-" = return (Just stdout)
 openH filename = do
     catch (Just <$> openFile filename WriteMode) $ \e -> do
-        hPutStr stderr $
-            "Error: Couldn't open " ++ filename ++ " for writing:\n" ++ show e ++ "\n"
+        hPutStrLn stderr $ "Error: Couldn't open " ++ filename ++ " for writing:\n" ++ show e
         exitFailure
-        return undefined
+
+parseSrc :: String -> IO Source
+parseSrc s = case BS.split '_' (BS.pack s) of
+    [pkg,version,x] | x == "src" -> return $ Source (SourceName pkg) (DebianVersion version)
+    _ -> do hPutStrLn stderr $ "Error: Could not parse source package name \"" ++ s ++ "\", "++
+                               "expecting format name_version_src"
+            exitFailure
 
 toArchList = map Arch . BS.split ',' . BS.pack
 
@@ -77,6 +83,9 @@ opts =
     , Option "" ["difference"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { differenceH = h })) "FILE")
       "print result overview to this file"
+    , Option "" ["migrate"]
+      (ReqArg (\ss config -> parseSrc ss >>= \s -> return (config { migrateThis = Just s })) "SRC")
+      "find a migration containing this src and ignoring this package's age"
     ] 
 
 main = do
@@ -96,6 +105,13 @@ runBritney config = do
     let ai1 = emptyIndex
     (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, ai)  <- parseSuite config ai2 (dir config </> "testing")
+
+    config <- case migrateThis config of
+        Nothing -> return config
+        Just src -> case ai `indexSrc` src of 
+            Nothing -> hPutStr stderr ("Source " ++ show src ++ " not known") >> exitFailure
+            Just si -> return $ config { migrateThisI = Just si }
+
     general <- parseGeneralInfo config ai
 
     let (rulesT, relaxable) = transitionRules config ai testing testing general
@@ -118,7 +134,8 @@ runBritney config = do
 
 
     let (rules, _) = transitionRules config ai unstable testing general
-        cleanedRules = rules `removeRelated` removeClause
+        extraRules = maybe id (\si -> (OneOf [genIndex si] "becuase it was requested" :)) (migrateThisI config)
+        cleanedRules = extraRules $ rules `removeRelated` removeClause
         cnf = clauses2CNF cleanedRules
 
     mbDo (dimacsH config) $ \h -> do
