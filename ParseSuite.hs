@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module ParseSuite where
 
 import System.FilePath
@@ -51,7 +52,7 @@ parseSuite config ai dir = do
                 arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS)
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
-                depends = either (error.show) id . parseDependency $ dependsField para
+                depends = parseDependency $ dependsField para
                 provides = [
                     ((BinName (BS.pack provide), providedArch), [binI]) |
                     provide <- either (error.show) id . parseProvides $ providesField para,
@@ -209,100 +210,50 @@ parseAgeFile file ai = do
             let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
             ]
 
-parseDependency :: BS.ByteString -> Either ParseError Dependency
-parseDependency str = parse pRelations (BS.unpack str) str
+parseDependency :: BS.ByteString -> Dependency
+parseDependency str = parseDisj <$> BS.split ',' (BS.dropWhile isSpace str)
 
-type RelParser a = Text.Parsec.ByteString.Parser a
+parseDisj :: BS.ByteString -> DepDisj
+parseDisj str' = (parseRel <$> BS.split '|' str, str)
+  where str = BS.dropWhile isSpace str'
 
--- "Correct" dependency lists are separated by commas, but sometimes they
--- are omitted and it is possible to parse relations without them.
-pRelations :: RelParser Dependency
-pRelations = do -- rel <- sepBy pOrRelation (char ',')
-		rel <- many pOrRelation
-                eof
-                return rel
+parseRel :: BS.ByteString -> DepRel
+parseRel str' = DepRel (BinName pkg) verReq archReq
+  where str = BS.dropWhile isSpace str'
+        (pkg, rest1') = BS.break isSpace str
+        rest1 = BS.dropWhile isSpace rest1'
+        (verReq, rest2')  | BS.null rest1        = (Nothing, rest1)
+                          | BS.head rest1 == '(' = first (Just . parseVerReq) $
+                                                   BS.break (==')') (BS.tail rest1)
+                          | otherwise            = (Nothing, rest1)
+        rest2 = BS.dropWhile isSpace . BS.dropWhile (==')') $ rest2'
+        (archReq, rest3') | BS.null rest2        = (Nothing, rest2)
+                          | BS.head rest2 == '[' = first (Just . parseArchReq) $
+                                                   BS.break (==']') (BS.tail rest2)
+                          | otherwise            = (Nothing, rest2)
 
-withInput :: RelParser a -> RelParser (a, BS.ByteString)
-withInput p = do
-    input1 <- getInput
-    ret <- p
-    input2 <- getInput
-    return (ret, BS.take (BS.length input1 - BS.length input2) input1)
+parseVerReq :: BS.ByteString -> VersionReq
+parseVerReq str = case BS.words str of
+    [rel, ver] -> parseVerReqRel rel (DebianVersion ver)
+    [] -> error $ "Cannot parse Version requirement " ++ show str
 
-pOrRelation :: RelParser DepDisj
-pOrRelation = do skipMany (char ',' <|> whiteChar)
-                 rel <- withInput (sepBy1 pRelation (char '|'))
-                 skipMany (char ',' <|> whiteChar)
-                 return rel
-
-whiteChar = oneOf [' ','\t','\n']
-
-pRelation :: RelParser DepRel
-pRelation =
-    do skipMany whiteChar
-       pkgName <- many1 (noneOf [' ',',','|','\t','\n','('])
-       skipMany whiteChar
-       mVerReq <- pMaybeVerReq
-       skipMany whiteChar
-       mArch <- pMaybeArch
-       return $ DepRel (BinName (BS.pack pkgName)) mVerReq mArch
-
-pMaybeVerReq :: RelParser (Maybe VersionReq)
-pMaybeVerReq =
-    do char '('
-       skipMany whiteChar
-       op <- pVerReq
-       skipMany whiteChar
-       version <- many1 (noneOf [' ',')','\t','\n'])
-       skipMany whiteChar
-       char ')'
-       return $ Just (op (DebianVersion (BS.pack version)))
-    <|>
-    do return $ Nothing
-
-pVerReq =
-    do char '<'
-       (do char '<' <|> char ' ' <|> char '\t'
-	   return $ SLT
-        <|>
-        do char '='
-	   return $ LTE)
-    <|>
-    do string "="
-       return $ EEQ
-    <|>
-    do char '>'
-       (do char '='
- 	   return $ GRE
-        <|>
-        do char '>' <|> char ' ' <|> char '\t'
-	   return $ SGR)
-
-pMaybeArch :: RelParser (Maybe ArchitectureReq)
-pMaybeArch =
-    do char '['
-       (do archs <- pArchExcept
-	   char ']'
-           skipMany whiteChar
-	   return (Just (ArchExcept archs))
-	<|>
-	do archs <- pArchOnly
-	   char ']'
-           skipMany whiteChar
-	   return (Just (ArchOnly archs))
-	)
-    <|>
-    return Nothing
-
--- Some packages (e.g. coreutils) have architecture specs like [!i386
--- !hppa], even though this doesn't really make sense: once you have
--- one !, anything else you include must also be (implicitly) a !.
-pArchExcept :: RelParser [Arch]
-pArchExcept = map (Arch . BS.pack) <$> sepBy (char '!' >> many1 (noneOf [']',' '])) (skipMany1 whiteChar)
-
-pArchOnly :: RelParser [Arch]
-pArchOnly = map (Arch . BS.pack) <$> sepBy (many1 (noneOf [']',' '])) (skipMany1 whiteChar)
-
+parseVerReqRel :: BS.ByteString -> DebianVersion -> VersionReq
+parseVerReqRel str v =
+    if str == "<" || str == "<<" then SLT v else
+    if str == "<="               then LTE v else
+    if str == "="                then EEQ v else
+    if str == ">="               then GRE v else
+    if str == ">" || str == ">>" then SGR v else
+    error $ "Cannot parse version relation " ++ show str
+      
+parseArchReq :: BS.ByteString -> ArchitectureReq
+parseArchReq str | BS.null str = error "Empty Architecture requirement"
+parseArchReq str = t arches
+ where t = if BS.head str == '!' then ArchExcept else ArchOnly
+       arches = fmap Arch $
+                filter (not . BS.null) $
+                BS.splitWith (\c -> isSpace c || c `elem` ",!") $
+                str
 
 parseProvides str = parse pProvides (BS.unpack str) str
 
@@ -315,6 +266,8 @@ pPkgName = do skipMany (char ',' <|> whiteChar)
               pkgName <- many1 (noneOf [' ',',','|','\t','\n','('])
               skipMany (char ',' <|> whiteChar)
               return pkgName
+
+whiteChar = oneOf [' ','\t','\n']
 
 set2MapNonEmpty :: (a -> [b]) -> S.Set a -> M.Map a [b]
 set2MapNonEmpty f s = M.fromDistinctAscList [ (k, v) | k <- S.toAscList s, let v = f k, not (null v) ]

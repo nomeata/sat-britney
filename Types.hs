@@ -33,7 +33,7 @@ data VersionReq
     | EEQ !DebianVersion
     | GRE !DebianVersion
     | SGR !DebianVersion
-      deriving Eq
+      deriving (Eq, Show)
 
 instance NFData VersionReq
 
@@ -108,7 +108,7 @@ instance NFData ArchitectureReq where
     rnf (ArchExcept as) = as `deepseq` ()
 
 data DepRel = DepRel !BinName !(Maybe VersionReq) !(Maybe ArchitectureReq)
-		deriving Eq
+		deriving (Show, Eq)
 
 instance NFData DepRel where
     rnf (DepRel a b c) = a `seq` b `deepseq` c `deepseq` ()
