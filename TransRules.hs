@@ -75,8 +75,8 @@ transitionRules config ai unstable testing general =
         outdated = 
             {-# SCC "outdated" #-}
             -- release architectures ought not to be out of date
-            [Not (genIndex newer) ("is out of date: " ++ show bin ++ " exists in unstable") |
-                (bin, src) <- M.toList (builtBy unstable),
+            [Not (genIndex newer) ("is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
+                (binI, src) <- M.toList (builtBy unstable),
                 -- TODO: only release architecture here
                 newer <- newerSources unstable ! src,
                 newer `S.notMember` sources testing

@@ -107,13 +107,13 @@ runBritney config = do
     removeClause <- case removeClauseE of
         Left mus -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
-            hPrint stderr $ nest 4 (vcat (map pp mus))
+            hPrint stderr $ nest 4 (vcat (map (pp ai) mus))
             exitFailure
             return []
         Right removeClause -> do
             mbDo (relaxationH config) $ \h -> do
                 hPutStrLn h $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
-                hPrint h $ nest 4 (vcat (map pp removeClause))
+                hPrint h $ nest 4 (vcat (map (pp ai) removeClause))
             return removeClause
 
 
@@ -127,7 +127,7 @@ runBritney config = do
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
-        hPrint h $ nest 4 (vcat (map pp cleanedRules))
+        hPrint h $ nest 4 (vcat (map (pp ai) cleanedRules))
 
     hPutStrLn stderr $ "Running main picosat run"
     result <- runClauseSAT cnf
@@ -136,7 +136,7 @@ runBritney config = do
             putStrLn "No suitable set of packages could be determined,"
             putStrLn "because the following requirements conflict:"
             putStrLn "(This should not happen, as this is detected earlier)"
-            print (nest 4 (vcat (map pp clauses)))
+            print (nest 4 (vcat (map (pp ai) clauses)))
         Right newAtomIs -> do
             mbDo (differenceH config) $ \h -> do
                 let newAtoms = S.map (ai `lookupAtom`) newAtomIs
