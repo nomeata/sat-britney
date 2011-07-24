@@ -140,16 +140,6 @@ parseSuite config dir = do
             ) atoms
     bugs `deepseq` return ()
 
-    -- Now the URGENCY file (may not exist)
-    hPutStrLn stderr "Reading and parsing urgency file"
-    urgencies <- parseUrgencyFile (dir </> "Urgency")
-    urgencies `deepseq` return ()
-
-    -- Now the Dates file (may not exist)
-    hPutStrLn stderr "Reading and parsing dates file"
-    ages <- parseAgeFile (dir </> "Dates")
-    ages `deepseq` return ()
-
     hPutStrLn stderr $ "Done reading input files, " ++ show (S.size sourceAtoms) ++
                        " sources, " ++ show (S.size binaries) ++ " binaries."
     return $ SuiteInfo
@@ -164,8 +154,21 @@ parseSuite config dir = do
         provides
         newerSources
         bugs
-        urgencies
-        ages
+
+parseGeneralInfo :: Config -> IO GeneralInfo
+parseGeneralInfo config = do 
+    -- Now the URGENCY file (may not exist)
+    hPutStrLn stderr "Reading and parsing urgency file"
+    urgencies <- parseUrgencyFile (dir config </> "testing" </> "Urgency")
+    urgencies `deepseq` return ()
+
+    -- Now the Dates file (may not exist)
+    hPutStrLn stderr "Reading and parsing dates file"
+    ages <- parseAgeFile (dir config </> "teting" </> "Dates")
+    ages `deepseq` return ()
+
+    hPutStrLn stderr $ "Done reading general input files"
+    return $ GeneralInfo urgencies ages
 
 parseUrgencyFile :: FilePath -> IO (M.Map Source Urgency)
 parseUrgencyFile file = do

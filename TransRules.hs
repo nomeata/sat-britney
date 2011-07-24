@@ -12,7 +12,7 @@ import Data.Functor
 import Types
 import LitSat
 
-transitionRules config unstable testing =
+transitionRules config unstable testing general =
     ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ tooyoung ++ buggy ++ dependencies
     , dependencies)
   where keepSrc = 
@@ -60,9 +60,9 @@ transitionRules config unstable testing =
             -- packages need to be old enough
             [Not (SrcAtom src) ("it is " ++ show age ++ " days old, needs " ++ show minAge) |
                 src <- M.keys buildsOnlyUnstable,
-                Just age <- [src `M.lookup` ages testing],
+                Just age <- [src `M.lookup` ages general],
                 let minAge = fromMaybe (defaultMinAge config) $
-                             urgencies testing `combine` minAges config $ src,
+                             urgencies general `combine` minAges config $ src,
                 age <= minAge
             ] 
         needsSource = 

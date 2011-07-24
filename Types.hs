@@ -104,7 +104,7 @@ instance Show ArchitectureReq where
 
 instance NFData ArchitectureReq where
     rnf (ArchOnly as) = as `deepseq` ()
-    rnf (ArchOnly as) = as `deepseq` ()
+    rnf (ArchExcept as) = as `deepseq` ()
 
 data DepRel = DepRel !BinName !(Maybe VersionReq) !(Maybe ArchitectureReq)
 		deriving Eq
@@ -127,7 +127,10 @@ data SuiteInfo = SuiteInfo {
     depends :: Map Binary Dependency,
     provides :: Map (BinName, Arch) [Binary],
     newerSources :: Map Source [Source],
-    bugs :: Map Atom [Bug],
+    bugs :: Map Atom [Bug]
+    }
+
+data GeneralInfo = GeneralInfo {
     urgencies :: Map Source Urgency,
     ages :: Map Source Age
     }

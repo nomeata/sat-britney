@@ -95,8 +95,9 @@ main = do
 runBritney config = do
     unstable <- parseSuite config (dir config </> "unstable")
     testing <- parseSuite config (dir config </> "testing")
+    general <- parseGeneralInfo config
 
-    let (rulesT, relaxable) = transitionRules config testing testing
+    let (rulesT, relaxable) = transitionRules config testing testing general
         idxT = allAtoms rulesT
         cnfT = clauses2CNF idxT rulesT
         relaxableClauses = clauses2CNF idxT relaxable
@@ -116,7 +117,7 @@ runBritney config = do
             return removeClause
 
 
-    let (rules, _) = transitionRules config unstable testing
+    let (rules, _) = transitionRules config unstable testing general
         cleanedRules = rules `removeRelated` removeClause
         idx = allAtoms cleanedRules
         cnf = clauses2CNF idx cleanedRules
