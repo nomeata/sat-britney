@@ -96,3 +96,22 @@ relaxer relaxable = go
                 Right _ -> do
                     return (Right [])
 
+-- Takes a CNF and a list of desired atoms (positive or negative), and it finds
+-- a solution that is set-inclusion maximal with regard to these atoms.
+runPicosatPMAX :: [Int] -> CNF -> IO (Either CNF [Int])
+runPicosatPMAX desired cnf = do
+    -- Initial run, to ensure satisfiability
+    ret <- runPicosat cnf
+    case ret of
+        Left mus -> return (Left mus)
+        Right solution -> Right <$> whatsLeft cnf solution desired 
+  where whatsLeft cnf solution desired = tryForce (map (:[]) done ++ cnf) solution todo
+          where solSet = S.fromList solution
+                (done,todo) = partition (`S.member` solSet) desired
+        tryForce cnf lastSol [] = return lastSol
+        tryForce cnf lastSol (force:desired) = do
+            let cnf' = [force] : cnf
+            ret <- runPicosat cnf'
+            case ret of
+                Left _ -> tryForce ([-force] : cnf) lastSol desired
+                Right solution -> whatsLeft cnf' solution desired
