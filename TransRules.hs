@@ -14,7 +14,9 @@ import LitSat
 
 transitionRules config ai unstable testing general =
     ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ dependencies
-    , dependencies)
+    , dependencies
+    , desired
+    , unwanted )
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -84,14 +86,13 @@ transitionRules config ai unstable testing general =
         obsolete = 
             {-# SCC "obsolete" #-}
             -- never add a source package to testing that is already superceded
-            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` s)) |
-                (src, bins) <- M.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable ! src]
+            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` src)) |
+                src <- S.toList obsoleteSource
             ]
         buggy = 
             {-# SCC "buggy1" #-}
             -- no new RC bugs
-            [Implies atom [bug] ("it has this bugs") |
+            [Implies atom [bug] ("it has this bug") |
                 (atom, bugs) <- M.toList bugsUnion,
                 bug <- genIndex <$> nub bugs
             ] ++
@@ -101,6 +102,23 @@ transitionRules config ai unstable testing general =
                 atom <- genIndex <$> S.toList forbiddenBugs
             ]
 
+        obsoleteSource = S.fromList [ s |
+                (src, bins) <- M.toList buildsOnlyUnstable,
+                (s:_) <- [newerSources unstable ! src]
+            ]
+        youngSource = S.fromList [ src |
+                src <- M.keys buildsOnlyUnstable,
+                Just age <- [src `M.lookup` ages general],
+                let minAge = fromMaybe (defaultMinAge config) $
+                             urgencies general `combine` minAges config $ src,
+                age <= minAge
+            ]
+
+        desired  = fmap genIndex $ S.toList $
+            sources unstable `S.difference` sources testing
+                             `S.difference` obsoleteSource
+                             `S.difference` youngSource
+        unwanted = [] -- fmap genIndex $ S.toList $ sources testing `S.difference` sources unstable
 
         sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)

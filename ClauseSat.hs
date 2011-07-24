@@ -55,9 +55,9 @@ clause2CNF (Not a _) = [ [-ai] ]
 cnf2Clause :: CNF2Clause a -> CNF -> [Clause a]
 cnf2Clause cnf = concatMap (\disj -> HM.lookupDefault undefined disj cnf) 
 
-runClauseSAT :: CNF2Clause AtomI -> IO (Either [Clause AtomI] (S.Set AtomI))
-runClauseSAT cnf = do
-    result <- runPicosat (onlyCNF cnf)
+runClauseSAT :: [AtomI] -> [AtomI] -> CNF2Clause AtomI -> IO (Either [Clause AtomI] (S.Set AtomI))
+runClauseSAT desired unwanted cnf = do
+    result <- runPicosatPMAX (map unIndex desired ++ map (negate . unIndex) unwanted) (onlyCNF cnf)
     case result of
         Left core -> do
             return (Left (cnf2Clause cnf core))

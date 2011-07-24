@@ -29,6 +29,17 @@ formatCNF cnf =
     concatMap (\l -> unwords (map show l) ++ " 0\n") cnf
   where maxVer = {-# SCC "maxVer" #-} foldl' (\n c -> foldl' (max `on` abs) n c) 0 cnf
 
+formatCNFPMAX :: CNF -> [Int] -> String
+formatCNFPMAX cnf desired =
+    "c LitSat CNF generator\n" ++
+    unwords ["p", "wcnf", show maxVer, show (numClauses + numDesired), top ] ++ "\n" ++
+    concatMap (\l -> top ++ " " ++ unwords (map show l) ++ " 0\n") cnf ++ 
+    concatMap (\i -> "1" ++ " " ++ show i ++ " 0\n") desired
+  where maxVer = {-# SCC "maxVer" #-} foldl' (\n c -> foldl' (max `on` abs) n c) 0 cnf
+        numClauses = length cnf
+        numDesired = length desired
+        top = show (numDesired + 1)
+
 
 parseCNF :: BS.ByteString -> CNF
 parseCNF str =
@@ -104,14 +115,58 @@ runPicosatPMAX desired cnf = do
     ret <- runPicosat cnf
     case ret of
         Left mus -> return (Left mus)
-        Right solution -> Right <$> whatsLeft cnf solution desired 
+        Right solution -> Right <$> runMSUnCore cnf desired -- whatsLeft cnf solution desired 
   where whatsLeft cnf solution desired = tryForce (map (:[]) done ++ cnf) solution todo
           where solSet = S.fromList solution
                 (done,todo) = partition (`S.member` solSet) desired
         tryForce cnf lastSol [] = return lastSol
         tryForce cnf lastSol (force:desired) = do
             let cnf' = [force] : cnf
+            hPutStr stderr $ "Forcing one, " ++ show (length desired) ++ " left to do."
             ret <- runPicosat cnf'
             case ret of
-                Left _ -> tryForce ([-force] : cnf) lastSol desired
-                Right solution -> whatsLeft cnf' solution desired
+                Left _ -> do
+                    hPutStrLn stderr $ "failed"
+                    tryForce ([-force] : cnf) lastSol desired
+                Right solution -> do
+                    hPutStrLn stderr $ "failed"
+                    whatsLeft cnf' solution desired
+
+runMSUnCore :: CNF -> [Int] -> IO [Int]
+runMSUnCore cnf desired = do
+    let cnfString = formatCNFPMAX cnf desired
+
+    (Just hint, Just hout, _, procHandle) <- createProcess $
+        (proc "./msuncore" ["/proc/self/fd/0"])
+        { std_in = CreatePipe
+        , std_out = CreatePipe
+        }
+
+    hPutStr hint cnfString
+    hClose hint
+    
+    result <- fix $ \next -> do
+        line <- hGetLine hout
+        if null line || head line `elem` "co" then next else return line
+    case result of
+        "s UNSATISFIABLE" -> do
+            hClose hout
+            waitForProcess procHandle
+            error "runMSUnCore should not be called with unsatisfiable instances"
+        "s OPTIMUM FOUND" -> do
+            satvarsS <- BS.hGetContents hout
+            let ls = mapMaybe (\l ->
+                        if BS.null l then Nothing
+                        else if BS.head l == 'c' then Nothing
+                        else if BS.head l == 'o' then Nothing
+                        else if BS.head l == 'v' then Just (BS.drop 2 l)
+                        else error $ "Cannot parse msuncore SAT output: " ++ BS.unpack l
+                    ) $ BS.lines satvarsS
+            let vars = case concatMap BS.words ls of 
+                 ints@(_:_) -> filter (/= 0) . fmap int $ init ints
+                 _ -> error $ "Cannot parse msuncore SAT output: " ++ BS.unpack satvarsS
+            waitForProcess procHandle
+            return vars
+        s -> do
+            error $ "Cannot parse msuncore status output: " ++ s
+

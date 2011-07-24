@@ -56,7 +56,7 @@ parseSrc s = case BS.split '_' (BS.pack s) of
                                "expecting format name_version_src"
             exitFailure
 
-toArchList = map Arch . BS.split ',' . BS.pack
+toArchList = map Arch . filter (not . BS.null) . BS.splitWith (\c -> c `elem` ", ") . BS.pack
 
 opts =
     [ Option "d" ["dir"]
@@ -114,7 +114,7 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai
 
-    let (rulesT, relaxable) = transitionRules config ai testing testing general
+    let (rulesT, relaxable, _, _) = transitionRules config ai testing testing general
         cnfT = clauses2CNF rulesT
         relaxableClauses = clauses2CNF relaxable
     
@@ -133,7 +133,7 @@ runBritney config = do
             return removeClause
 
 
-    let (rules, _) = transitionRules config ai unstable testing general
+    let (rules, _, desired, unwanted) = transitionRules config ai unstable testing general
         extraRules = maybe id (\si -> (OneOf [genIndex si] "becuase it was requested" :)) (migrateThisI config)
         cleanedRules = extraRules $ rules `removeRelated` removeClause
         cnf = clauses2CNF cleanedRules
@@ -146,8 +146,13 @@ runBritney config = do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
         hPrint h $ nest 4 (vcat (map (pp ai) cleanedRules))
 
+    {-
+    hPutStrLn stderr $ "Desired packages:"
+    hPrint stderr $ nest 4 (vcat (map (pp ai) desired))
+    -}
+
     hPutStrLn stderr $ "Running main picosat run"
-    result <- runClauseSAT cnf
+    result <- runClauseSAT desired unwanted cnf
     case result of 
         Left clauses -> do
             putStrLn "No suitable set of packages could be determined,"
