@@ -43,7 +43,7 @@ runPicosatCNF cnf = do
     (coreInFd, coreOutFd) <- createPipe
     coreIn <- fdToHandle coreInFd
 
-    (Just hint, Just hout, _, _) <- createProcess $
+    (Just hint, Just hout, _, procHandle) <- createProcess $
         (proc "picosat.trace" ["-c", "/proc/self/fd/" ++ show coreOutFd])
         { std_in = CreatePipe
         , std_out = CreatePipe
@@ -60,6 +60,7 @@ runPicosatCNF cnf = do
         "s UNSATISFIABLE" -> do
             hClose hout
             core <- parseCNF <$> BS.hGetContents coreIn
+            waitForProcess procHandle
             return (Left core)
         "s SATISFIABLE" -> do
             hClose coreIn
@@ -73,6 +74,7 @@ runPicosatCNF cnf = do
             let vars = case concatMap BS.words ls of 
                  ints@(_:_) | last ints == BS.pack "0" -> int <$> init ints
                  _ -> error $ "Cannot parse picosat SAT output: " ++ BS.unpack satvarsS
+            waitForProcess procHandle
             return (Right vars)
         s -> do
             error $ "Cannot parse picostat status output: " ++ s
