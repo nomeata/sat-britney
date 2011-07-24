@@ -179,8 +179,7 @@ parseGeneralInfo config ai = do
 
 parseUrgencyFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Urgency)
 parseUrgencyFile file ai = do
-    ex <- doesFileExist file
-    urgencyS <- if ex then BS.readFile file else return BS.empty
+    urgencyS <- BS.readFile file
 
     return $ M.fromList [ (srcI, urgency) | 
             line <- BS.lines urgencyS,
@@ -194,8 +193,7 @@ parseUrgencyFile file ai = do
 
 parseAgeFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Age)
 parseAgeFile file ai = do
-    ex <- doesFileExist file
-    dateS <- if ex then BS.readFile file else return BS.empty
+    dateS <- BS.readFile file
 
     -- Timeszone?
     now <- utctDay <$> getCurrentTime
