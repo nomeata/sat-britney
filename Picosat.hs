@@ -136,6 +136,8 @@ runMSUnCore :: CNF -> [Int] -> IO [Int]
 runMSUnCore cnf desired = do
     let cnfString = formatCNFPMAX cnf desired
 
+    writeFile "/tmp/msuncore.dimacs" cnfString
+
     (Just hint, Just hout, _, procHandle) <- createProcess $
         (proc "./msuncore" ["/proc/self/fd/0"])
         { std_in = CreatePipe

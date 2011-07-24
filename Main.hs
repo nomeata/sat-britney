@@ -130,6 +130,7 @@ runBritney config = do
             mbDo (relaxationH config) $ \h -> do
                 hPutStrLn h $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
                 hPrint h $ nest 4 (vcat (map (pp ai) removeClause))
+                hFlush h
             return removeClause
 
 
@@ -141,10 +142,12 @@ runBritney config = do
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
         hPutStr h $ formatCNF (onlyCNF cnf)
+        hFlush h
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
         hPrint h $ nest 4 (vcat (map (pp ai) cleanedRules))
+        hFlush h
 
     {-
     hPutStrLn stderr $ "Desired packages:"
@@ -167,6 +170,7 @@ runBritney config = do
                 printDifference h (S.map (ai `lookupSrc`) $ sources testing) newSource
                 hPutStrLn h "Changes of Package:"
                 printDifference h (S.map (ai `lookupBin`) $ binaries testing) newBinaries
+                hFlush h
     hPutStrLn stderr $ "Done"
     
 splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
