@@ -49,7 +49,7 @@ parseSuite config ai dir = do
                 pkg = packageField para
                 version = DebianVersion (versionField para)
                 archS = architectureField para
-                arch = if archS == BS.pack "all" then ST.Nothing else ST.Just (Arch archS)
+                arch = if archS == "all" then ST.Nothing else ST.Just (Arch archS)
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
                 depends = parseDependency $ dependsField para
@@ -139,7 +139,7 @@ parseSuite config ai dir = do
             SrcAtom (Source sn' _) ->
                 let sn = unSourceName sn'
                 in  M.findWithDefault [] sn rawBugs ++
-                    M.findWithDefault [] (BS.pack "src:" `BS.append` sn) rawBugs
+                    M.findWithDefault [] ("src:" `BS.append` sn) rawBugs
             BinAtom (Binary bn' _ _) -> 
                 let bn = unBinName bn'
                 in  M.findWithDefault [] bn rawBugs 
@@ -204,7 +204,7 @@ parseAgeFile file ai = do
             line <- BS.lines dateS,
             not (BS.null line),
             let [pkg,version,dayS] = BS.words line,
-            not (BS.pack "upl" `BS.isPrefixOf` version),
+            not ("upl" `BS.isPrefixOf` version),
             let src = Source (SourceName pkg) (DebianVersion version),
             Just srcI <- [ai `indexSrc` src],
             let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
