@@ -28,6 +28,7 @@ import PrettyPrint
 import ClauseSat
 import Picosat
 import LitSat
+import Hints
 
 minAgeTable = M.fromList [
     (Urgency "low", Age 10), 
@@ -39,7 +40,7 @@ minAgeTable = M.fromList [
 
 defaultConfig :: Config
 defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10)
-                       Nothing False Nothing Nothing Nothing Nothing Nothing
+                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
 allArches = map (Arch . BS.pack) $ words
@@ -85,6 +86,9 @@ opts =
     , Option "" ["difference"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { differenceH = h })) "FILE")
       "print result overview to this file"
+    , Option "" ["hints"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { hintsH = h })) "FILE")
+      "print britney2 hints to this file"
     , Option "" ["migrate"]
       (ReqArg (\ss config -> parseSrc ss >>= \s -> return (config { migrateThis = Just s })) "SRC")
       "find a migration containing this src and ignoring this package's age"
@@ -174,6 +178,11 @@ runBritney config = do
                 hPutStrLn h "Changes of Package:"
                 printDifference h (S.map (ai `lookupBin`) $ binaries testing) newBinaries
                 hFlush h
+
+            mbDo (hintsH config) $ \h -> do
+                L.hPut h $ generateHints ai testing unstable newAtomIs
+                hFlush h
+
     hPutStrLn stderr $ "Done"
     
 splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
