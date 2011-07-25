@@ -1,5 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Picosat where
+module Picosat
+    ( Conj
+    , CNF
+    , relaxer 
+    , atom2Conj
+    , formatCNF
+    , reorder
+    , runPicosatPMAX
+    )
+    where
 
 import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Char8 as BS
@@ -137,7 +146,7 @@ relaxer relaxable cnf = do
             --    hPutStrLn stderr $ "Removed clause " ++ show clause ++ " not found in relaxable" }
             ret <- runPicosat (cnf ++ leftOver) 
             case ret of 
-                Left mus -> do
+                Left _ -> do
                     hPutStrLn stderr $ "Relaxed CNF still unsatisfiable after removing " ++
                         show (length removed) ++ " clauses, retrying..."
                     fmap (removed ++) <$> relaxer leftOver cnf
@@ -151,9 +160,9 @@ runPicosatPMAX desired cnf = do
     -- Initial run, to ensure satisfiability
     ret <- runPicosat cnf
     case (ret, desired) of
-        (Left mus,_) -> return (Left mus)
+        (Left mus,_)         -> return (Left mus)
         (Right solution, []) -> return (Right solution)
-        (Right solution, _)  -> Right <$> runPMAXSolver cnf relaxable 
+        (Right _, _)         -> Right <$> runPMAXSolver cnf relaxable 
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
@@ -192,7 +201,7 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
         "s UNSATISFIABLE" -> do
             hClose hout
             waitForProcess procHandle
-            error "runMSUnCore should not be called with unsatisfiable instances"
+            error "runPMAXSolver should not be called with unsatisfiable instances"
         "s OPTIMUM FOUND" -> do
             satvarsS <- BS.hGetContents hout
             let vLines = mapMaybe (\l ->
