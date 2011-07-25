@@ -44,22 +44,22 @@ parseSuite config ai dir = do
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
     let ( binaryAtoms
-         ,binaryNames
-         ,depends
-         ,provides
-         ,conflicts
-         ,breaks
-         ,builtBy
+         ,binaryNamesList
+         ,binaryDepends
+         ,binaryProvides
+         ,binaryConflicts
+         ,binaryBreaks
+         ,builtByList
          ,ai') = readPara ai binaries
-        readPara ai [] = ([], M.empty, M.empty, M.empty, M.empty, M.empty, M.empty, ai)
+        readPara ai [] = ([], [], [], [], [], [], [], ai)
         readPara ai (para:ps) =
                     ( binI:bins
-                    , M.unionWith (++) (M.fromList binNamesEntries) binNames
-                    , M.insert binI depends deps
-                    , provides `M.union` provs
-                    , M.insert binI conflicts confls
-                    , M.insert binI breaks brks
-                    , M.insert binI srcI bb
+                    , binNamesEntries ++ binNames
+                    , (binI,depends):deps
+                    , provides ++ provs
+                    , (binI,conflicts):confls
+                    , (binI,breaks):brks
+                    , (binI,srcI): bb
                     ,finalAi)
           where (bins, binNames, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
                 pkg = packageField para
@@ -74,7 +74,7 @@ parseSuite config ai dir = do
                 depends = parseDependency $ dependsField para
                 conflicts = parseDependency $ conflictsField para
                 breaks = parseDependency $ breaksField para
-                provides = M.fromList [
+                provides = [
                     ((BinName (BS.pack provide), providedArch), [binI]) |
                     provide <- either (error.show) id . parseProvides $ providesField para,
                     providedArch <- case arch of 
@@ -90,25 +90,31 @@ parseSuite config ai dir = do
                 (ai'', srcI) = addSrc ai' sourceAtom
 
     hPutStrLn stderr $ "Calculating builtBy"
+    let builtBy = {-# SCC "builtBy" #-} M.fromList builtByList
     builtBy `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating builds"
-    let builds = {-# SCC "builds" #-}  M.fromListWith (++) [ (src,[bin]) | (bin,src) <- M.toList builtBy ]
+    let builds = {-# SCC "builds" #-}  M.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
     builds `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating depends"
+    let depends = {-# SCC "depends" #-} M.fromList binaryDepends
     depends `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating provides"
+    let provides = {-# SCC "provides" #-} M.fromList binaryProvides
     provides `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating conflicts"
+    let conflicts = {-# SCC "conflicts" #-} M.fromList binaryConflicts
     conflicts `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating breaks"
+    let breaks = {-# SCC "breaks" #-} M.fromList binaryBreaks
     breaks `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating binaryNames"
+    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) binaryNamesList
     binaryNames `deepseq` return ()
 
     -- We use the sources found in the Packages file as well, because they
