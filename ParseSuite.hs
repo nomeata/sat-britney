@@ -43,10 +43,23 @@ parseSuite config ai dir = do
     binaries <- concat <$>
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
-    let (binaryAtoms, binaryDepends, binaryProvides, builtByList, ai') = readPara ai binaries
-        readPara ai [] = ([], [], [], [], ai)
-        readPara ai (para:ps) = (binI:bins, (binI,depends):deps, provides ++ provs, (binI,srcI): bb,finalAi)
-          where (bins, deps, provs, bb, finalAi) = readPara ai'' ps
+    let ( binaryAtoms
+         ,binaryDepends
+         ,binaryProvides
+         ,binaryConflicts
+         ,binaryBreaks
+         ,builtByList
+         ,ai') = readPara ai binaries
+        readPara ai [] = ([], [], [], [], [], [], ai)
+        readPara ai (para:ps) =
+                    ( binI:bins
+                    , (binI,depends):deps
+                    , provides ++ provs
+                    , (binI,conflicts):confls
+                    , (binI,breaks):brks
+                    , (binI,srcI): bb
+                    ,finalAi)
+          where (bins, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
                 pkg = packageField para
                 version = DebianVersion (versionField para)
                 archS = architectureField para
@@ -54,6 +67,8 @@ parseSuite config ai dir = do
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
                 depends = parseDependency $ dependsField para
+                conflicts = parseDependency $ conflictsField para
+                breaks = parseDependency $ breaksField para
                 provides = [
                     ((BinName (BS.pack provide), providedArch), [binI]) |
                     provide <- either (error.show) id . parseProvides $ providesField para,
@@ -84,6 +99,14 @@ parseSuite config ai dir = do
     hPutStrLn stderr $ "Calculating provides"
     let provides = {-# SCC "provides" #-} M.fromList binaryProvides
     provides `deepseq` return ()
+
+    hPutStrLn stderr $ "Calculating conflicts"
+    let conflicts = {-# SCC "conflicts" #-} M.fromList binaryConflicts
+    conflicts `deepseq` return ()
+
+    hPutStrLn stderr $ "Calculating breaks"
+    let breaks = {-# SCC "breaks" #-} M.fromList binaryBreaks
+    breaks `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating binaryNames"
     let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) 
@@ -159,6 +182,8 @@ parseSuite config ai dir = do
         builtBy
         depends
         provides
+        conflicts
+        breaks
         newerSources
         bugs
         , ai'')

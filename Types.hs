@@ -182,6 +182,8 @@ data SuiteInfo = SuiteInfo {
     builtBy :: Map BinI SrcI,
     depends :: Map BinI Dependency,
     provides :: Map (BinName, Arch) [BinI],
+    conflicts :: Map BinI Dependency,
+    breaks :: Map BinI Dependency,
     newerSources :: Map SrcI [SrcI],
     bugs :: Map AtomI [BugI]
     }
