@@ -66,10 +66,10 @@ opts =
       (ReqArg (\d config -> return (config { dir = d })) "DIR")
       "directory containing britney data"
     , Option "a" ["arches"]
-      (ReqArg (\as config -> return (config { arches = toArchList as })) "ARCH1,ARCH2")
+      (ReqArg (\as config -> return (config { arches = toArchList as })) "ARCH,..")
       "comma-separated list of arches to consider at all. Defaults to all"
     , Option "r" ["release-arches"]
-      (ReqArg (\as config -> return (config { releaseArches = toArchList as })) "ARCH1,ARCH2")
+      (ReqArg (\as config -> return (config { releaseArches = toArchList as })) "ARCH,...")
       "comma-separated list of arches to consider release critical. Defaults to all"
     , Option "" ["relaxation"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { relaxationH = h })) "FILE")
