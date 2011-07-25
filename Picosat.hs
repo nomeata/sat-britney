@@ -29,6 +29,9 @@ type CNF = [Conj]
 -- Also, remember largest variable
 type Conj = (BS.ByteString, Int)
 
+safeMaximum [] = 0
+safeMaximum l = maximum l
+
 reorder :: [Int] -> Conj
 reorder ls = m `seq` (BS.pack $ unwords (map show (sortBy (compare `on` abs) ls)) ++ " 0\n" , m)
   where m = maximum (map abs ls)
@@ -43,7 +46,7 @@ formatCNF cnf = L.concat
     , body
     ]
   where numClauses = length cnf
-        (body, maxVar) = (L.fromChunks *** maximum) (unzip cnf)
+        (body, maxVar) = (L.fromChunks *** safeMaximum) (unzip cnf)
 
 formatCNFPMAX :: CNF -> CNF -> L.ByteString
 formatCNFPMAX cnf relaxable = L.concat $
@@ -54,17 +57,18 @@ formatCNFPMAX cnf relaxable = L.concat $
     , body2 ]
   where numClauses = length cnf
         numRelaxable = length relaxable
-        topN = show (numRelaxable + 1)
+        topN = show (numRelaxable + 2)
         top = BS.pack (topN ++ " ")
         soft = BS.pack ("1 ")
-        (body1, maxVar1) = (L.fromChunks . prependEach top  *** maximum) (unzip cnf)
-        (body2, maxVar2) = (L.fromChunks . prependEach soft *** maximum) (unzip relaxable)
+        (body1, maxVar1) = (L.fromChunks . prependEach top  *** safeMaximum) (unzip cnf)
+        (body2, maxVar2) = (L.fromChunks . prependEach soft *** safeMaximum) (unzip relaxable)
         maxVar = maxVar1 `max` maxVar2
-        prependEach a = (a:) . intersperse a
+        prependEach a [] = []
+        prependEach a l = (a:) . intersperse a $ l
 
 
 parseConj :: BS.ByteString -> Conj
-parseConj = reorder . init . map int . BS.words
+parseConj = reorder . filter (/=0) . map int . BS.words
                     
 parseCNF :: BS.ByteString -> CNF
 parseCNF = map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines
@@ -201,7 +205,7 @@ runMSUnCore listUnsat cnf desired = getTemporaryDirectory  >>= \tmpdir ->
                         dropWhile (== "c Unsat Clauses:") $
                         dropWhile (/= "c Unsat Clauses:") other
             let vars = case concatMap BS.words vLines of 
-                 ints@(_:_) -> filter (/= 0) . fmap int $ init ints
+                 ints@(_:_) -> filter (/= 0) . fmap int $ ints
                  _ -> error $ "Cannot parse msuncore SAT output: " ++ BS.unpack satvarsS
             waitForProcess procHandle
             return (vars, unsat)

@@ -13,7 +13,7 @@ import Types
 import LitSat
 
 transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy
     , conflictClauses ++ dependencies
     , desired , unwanted )
   where relaxable = conflictClauses ++ dependencies
@@ -91,7 +91,14 @@ transitionRules config ai unstable testing general =
             {-# SCC "needsSource" #-}
             -- a package needs its source
             [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
-                (bin, src) <- M.toList (builtBy unstable)
+                (bin, src) <- M.toList builtByUnion
+            ]
+        needsBinary =
+            {-# SCC "needsBinary" #-}
+            -- a source needs a binary
+            [Implies (genIndex src) bins ("it were useless otherwise") |
+                (src, binIs) <- M.toList buildsUnion,
+                let bins = map genIndex (nub binIs)
             ]
         outdated = 
             {-# SCC "outdated" #-}
@@ -148,6 +155,9 @@ transitionRules config ai unstable testing general =
         -- We assume that the dependency information is the same, even from different suites
         dependsUnion = {-# SCC "dependsUnion" #-} M.union (depends unstable) (depends testing)
         conflictsUnion = {-# SCC "conflictsUnion" #-} M.union (conflicts unstable) (conflicts testing)
+        builtByUnion = {-# SCC "builtByUnion" #-} M.union (builtBy unstable) (builtBy testing)
+        buildsUnion = {-# SCC "buildsUnion" #-} M.unionWith (++) (builds unstable) (builds testing)
+
         breaksUnion = {-# SCC "breaksUnion" #-} M.union (breaks unstable) (breaks testing)
         bugsUnion = {-# SCC "bugsUnion" #-} M.unionWith (++) (bugs unstable) (bugs testing)
 

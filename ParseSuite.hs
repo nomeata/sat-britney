@@ -120,7 +120,7 @@ parseSuite config ai dir = do
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
     hPutStrLn stderr $ "Calculating sourceAtoms"
-    let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (M.elems builtBy)
+    let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (M.keys builds)
     sourceAtoms `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating sourceNames"
