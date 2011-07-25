@@ -13,8 +13,9 @@ import Types
 import LitSat
 
 transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ relaxable
-    ,relaxable , desired , unwanted )
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy
+    , conflictClauses ++ dependencies
+    , desired , unwanted )
   where relaxable = conflictClauses ++ dependencies
         keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing

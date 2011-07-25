@@ -93,8 +93,8 @@ opts =
 main = do
     args <- getArgs
     name <- getProgName
-    let header = "Usage: " ++ name ++ " -d DIR [OPTION...]"
-        footer = "Instead of FILE, \"-\" can be used to print to the standard output.\n"
+    let header = "Usage: " ++ name ++ " -d DIR [OPTION...]\n"
+        footer = "\nInstead of FILE, \"-\" can be used to print to the standard output.\n"
         usage = hPutStr stderr $ usageInfo header opts ++ footer
     if null args then usage else do
     case getOpt Permute opts args of
@@ -116,9 +116,9 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai
 
-    let (rulesT, relaxable, _, _) = transitionRules config ai testing testing general
+    let (rulesT, relaxableT, _, _) = transitionRules config ai testing testing general
         cnfT = clauses2CNF rulesT
-        relaxableClauses = clauses2CNF relaxable
+        relaxableClauses = clauses2CNF relaxableT
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
     removeClauseE <- runRelaxer relaxableClauses cnfT
@@ -127,7 +127,6 @@ runBritney config = do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
             hPrint stderr $ nest 4 (vcat (map (pp ai) mus))
             exitFailure
-            return []
         Right removeClause -> do
             hPutStrLn stderr $ show (length removeClause) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
@@ -136,9 +135,9 @@ runBritney config = do
             return removeClause
 
 
-    let (rules, _, desired, unwanted) = transitionRules config ai unstable testing general
-        extraRules = maybe id (\si -> (OneOf [genIndex si] "becuase it was requested" :)) (migrateThisI config)
-        cleanedRules = extraRules $ rules `removeRelated` removeClause
+    let (rules, relaxable, desired, unwanted) = transitionRules config ai unstable testing general
+        extraRules = maybe [] (\si -> [OneOf [genIndex si] "becuase it was requested"]) (migrateThisI config)
+        cleanedRules = extraRules ++ rules ++ (relaxable `removeRelated` removeClause)
         cnf = clauses2CNF cleanedRules
 
     mbDo (dimacsH config) $ \h -> do

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Picosat where
 
 import qualified Data.ByteString.Lazy.Char8 as L
@@ -12,9 +13,12 @@ import Data.List
 import Data.Ord
 import Data.Maybe
 import Data.Function
+import Data.Either
 import System.Directory
 import Distribution.Simple.Utils (withTempFile)
 import Control.Arrow ((***))
+import Debug.Trace
+import Control.Monad
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -35,30 +39,35 @@ atom2Conj i = (BS.pack $ show i ++ " 0\n", i)
 formatCNF :: CNF -> L.ByteString
 formatCNF cnf = L.concat
     [ L.pack "c LitSat CNF generator\n"
-    , L.pack $unwords ["p", "cnf", show maxVer, show numClauses] ++ "\n"
+    , L.pack $unwords ["p", "cnf", show maxVar, show numClauses] ++ "\n"
     , body
     ]
   where numClauses = length cnf
-        (body, maxVer) = (L.fromChunks *** maximum) (unzip cnf)
+        (body, maxVar) = (L.fromChunks *** maximum) (unzip cnf)
 
-formatCNFPMAX :: CNF -> [Int] -> L.ByteString
-formatCNFPMAX cnf desired = L.concat $
+formatCNFPMAX :: CNF -> CNF -> L.ByteString
+formatCNFPMAX cnf relaxable = L.concat $
     [ L.pack "c LitSat CNF generator\n"
-    , L.pack $ unwords ["p", "wcnf", show maxVer, show (numClauses + numDesired), topN ] ++ "\n"
-    , body ] ++
-    map (\i -> L.pack $ "1 " ++ show i ++ " 0\n") desired
+    , L.pack $ unwords
+        ["p", "wcnf", show maxVar, show (numClauses + numRelaxable), topN ] ++ "\n"
+    , body1
+    , body2 ]
   where numClauses = length cnf
-        numDesired = length desired
-        topN = show (numDesired + 1)
+        numRelaxable = length relaxable
+        topN = show (numRelaxable + 1)
         top = BS.pack (topN ++ " ")
-        (body, maxVer) = (L.fromChunks . (top:) . intersperse top *** maximum) (unzip cnf)
+        soft = BS.pack ("1 ")
+        (body1, maxVar1) = (L.fromChunks . prependEach top  *** maximum) (unzip cnf)
+        (body2, maxVar2) = (L.fromChunks . prependEach soft *** maximum) (unzip relaxable)
+        maxVar = maxVar1 `max` maxVar2
+        prependEach a = (a:) . intersperse a
 
 
+parseConj :: BS.ByteString -> Conj
+parseConj = reorder . init . map int . BS.words
+                    
 parseCNF :: BS.ByteString -> CNF
-parseCNF str =
-    map (reorder . init . map int . BS.words) $
-    dropWhile (\l -> BS.null l || BS.head l `elem` "cp") $
-    BS.lines str
+parseCNF = map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines
 
 runPicosat :: CNF -> IO (Either CNF [Int])
 runPicosat cnf = do
@@ -83,9 +92,9 @@ runPicosat cnf = do
     case result of
         "s UNSATISFIABLE" -> do
             hClose hout
-            core <- parseCNF <$> BS.hGetContents coreIn
+            musString <- BS.hGetContents coreIn
             waitForProcess procHandle
-            return (Left core)
+            return (Left (parseCNF musString))
         "s SATISFIABLE" -> do
             hClose coreIn
             satvarsS <- BS.hGetContents hout
@@ -105,20 +114,29 @@ runPicosat cnf = do
 
 -- Takes a CNF and removes clauses (and returns them) until it becomes
 -- satisfiable. The first argument gives the CNFs to relax
-relaxer :: S.Set Conj -> CNF -> IO (Either CNF CNF)
-relaxer relaxable = go 
-  where go cnf = do
-            ret <- runPicosat cnf
-            case ret of
+relaxer :: CNF -> CNF -> IO (Either CNF CNF)
+relaxer relaxable cnf = do
+    ret <- runPicosat cnf
+    case ret of
+        Left mus -> do
+            hPutStrLn stderr $ "Non-relaxable clauses are not satisfiable"
+            L.hPut stderr $ formatCNF mus
+            return (Left mus)
+        Right _ -> do
+            remove <- snd <$> runMSUnCore True cnf relaxable
+            let s = S.fromList remove
+            let (removed,leftOver) = partition (`S.member`s) relaxable
+            --let s2 = S.fromList relaxable
+            --case find (`S.notMember`s2) remove of { Nothing -> return () ; Just clause -> 
+            --    hPutStrLn stderr $ "Removed clause " ++ show clause ++ " not found in relaxable" }
+            ret <- runPicosat (cnf ++ leftOver) 
+            case ret of 
                 Left mus -> do
-                    case find (`S.member` relaxable) mus of
-                        Just remove -> fmap (remove:) <$> go (remove `delete` cnf)
-                        Nothing -> do
-                            hPutStrLn stderr $ "No relaxable clause in MUS:"
-                            L.hPut stderr $ formatCNF mus
-                            return (Left mus)
-                Right _ -> do
-                    return (Right [])
+                    hPutStrLn stderr $ "Relaxed CNF still unsatisfiable, retrying..."
+                    fmap (removed ++) <$> relaxer leftOver cnf
+                Right _ -> return (Right remove)
+
+
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion maximal with regard to these atoms.
@@ -128,8 +146,10 @@ runPicosatPMAX desired cnf = do
     ret <- runPicosat cnf
     case ret of
         Left mus -> return (Left mus)
-        Right solution -> Right <$> runMSUnCore cnf desired -- whatsLeft cnf solution desired 
-  where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
+        Right solution -> Right . fst <$> runMSUnCore False cnf relaxable 
+    where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
+{-
+    where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
           where solSet = S.fromList solution
                 (done,todo) = partition (`S.member` solSet) desired
         tryForce cnf lastSol [] = return lastSol
@@ -144,17 +164,22 @@ runPicosatPMAX desired cnf = do
                 Right solution -> do
                     hPutStrLn stderr $ "failed"
                     whatsLeft cnf' solution desired
+-}
 
-runMSUnCore :: CNF -> [Int] -> IO [Int]
-runMSUnCore cnf desired = getTemporaryDirectory  >>= \tmpdir ->
+-- If the first parameter is True, it also returns the list of violated
+-- clauses. If it is False, it returns the empty list there.
+runMSUnCore :: Bool -> CNF -> CNF -> IO ([Int],CNF)
+runMSUnCore listUnsat cnf desired = getTemporaryDirectory  >>= \tmpdir ->
     withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
     L.hPut handle cnfString
     hClose handle
 
+    let opts = (if listUnsat then ("-u":) else id) ["-v", "0", tmpfile]
+
     (_, Just hout, _, procHandle) <- createProcess $
-        (proc "./msuncore" ["-v", "0", tmpfile]) { std_out = CreatePipe }
+        (proc "./msuncore" opts) { std_out = CreatePipe }
     
     result <- fix $ \next -> do
         line <- hGetLine hout
@@ -166,18 +191,20 @@ runMSUnCore cnf desired = getTemporaryDirectory  >>= \tmpdir ->
             error "runMSUnCore should not be called with unsatisfiable instances"
         "s OPTIMUM FOUND" -> do
             satvarsS <- BS.hGetContents hout
-            let ls = mapMaybe (\l ->
-                        if BS.null l then Nothing
-                        else if BS.head l == 'c' then Nothing
-                        else if BS.head l == 'o' then Nothing
-                        else if BS.head l == 'v' then Just (BS.drop 2 l)
-                        else error $ "Cannot parse msuncore SAT output: " ++ BS.unpack l
+            let (vLines, other) = partitionEithers $ map (\l ->
+                        if BS.null l then Right l
+                        else if BS.head l == 'v' then Left (BS.drop 2 l)
+                        else Right l
                     ) $ BS.lines satvarsS
-            let vars = case concatMap BS.words ls of 
+            let unsat = map (parseConj . BS.drop 2) $
+                        takeWhile (not . ("c CPU Time" `BS.isPrefixOf`)) $
+                        dropWhile (== "c Unsat Clauses:") $
+                        dropWhile (/= "c Unsat Clauses:") other
+            let vars = case concatMap BS.words vLines of 
                  ints@(_:_) -> filter (/= 0) . fmap int $ init ints
                  _ -> error $ "Cannot parse msuncore SAT output: " ++ BS.unpack satvarsS
             waitForProcess procHandle
-            return vars
+            return (vars, unsat)
         s -> do
             error $ "Cannot parse msuncore status output: " ++ s
 

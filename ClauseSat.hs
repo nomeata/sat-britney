@@ -54,7 +54,8 @@ clause2CNF (Not a _) = [ atom2Conj (-ai) ]
     where ai = unIndex a
 
 cnf2Clause :: CNF2Clause a -> CNF -> [Clause a]
-cnf2Clause cnf = concatMap (\disj -> HM.lookupDefault undefined disj cnf) 
+cnf2Clause cnf = concatMap (\disj -> HM.lookupDefault (err disj) disj cnf) 
+    where err cl = error $ "A tool returned the clause " ++ show cl ++ " which is not known to me"
 
 runClauseSAT :: [AtomI] -> [AtomI] -> CNF2Clause AtomI -> IO (Either [Clause AtomI] (S.Set AtomI))
 runClauseSAT desired unwanted cnf = do
@@ -68,5 +69,5 @@ runClauseSAT desired unwanted cnf = do
 
 runRelaxer :: CNF2Clause a -> CNF2Clause a -> IO (Either [Clause a] [Clause a])
 runRelaxer relaxable cnf = do
-    removeCNF <- relaxer (S.fromList (HM.keys relaxable)) (onlyCNF cnf)
-    return $ either (Left . cnf2Clause cnf) (Right . cnf2Clause cnf) removeCNF
+    removeCNF <- relaxer (onlyCNF relaxable) (onlyCNF cnf)
+    return $ either (Left . cnf2Clause cnf) (Right . cnf2Clause relaxable) removeCNF
