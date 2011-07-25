@@ -13,11 +13,10 @@ import Types
 import LitSat
 
 transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ dependencies
-    , dependencies
-    , desired
-    , unwanted )
-  where keepSrc = 
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ relaxable
+    ,relaxable , desired , unwanted )
+  where relaxable = conflictClauses ++ dependencies
+        keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
@@ -47,6 +46,25 @@ transitionRules config ai unstable testing general =
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
                 let deps = map genIndex . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
+            ]
+        conflictClauses =
+            {-# SCC "conflictClauses" #-}
+            -- Conflicts
+            [Implies (genIndex binI) [genIndex confl] ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
+                (binI,depends) <- M.toList conflictsUnion,
+                let Binary _ _ arch = ai `lookupBin` binI,
+                (disjunction, reason) <- depends,
+                rel@(DepRel _ (Just vr) _ ) <- disjunction,
+                hasUpperBound vr,
+                confl <- nub (resolve arch rel)
+            ] ++
+            [Implies (genIndex binI) [genIndex confl] ("the package breaks on \"" ++ BS.unpack reason ++ "\".") |
+                (binI,depends) <- M.toList breaksUnion,
+                let Binary _ _ arch = ai `lookupBin` binI,
+                (disjunction, reason) <- depends,
+                rel@(DepRel _ (Just vr) _ ) <- disjunction,
+                -- hasUpperBound vr,
+                confl <- nub (resolve arch rel)
             ]
         releaseSync = 
             {-# SCC "releaseSync" #-}
@@ -128,6 +146,8 @@ transitionRules config ai unstable testing general =
         providesUnion = {-# SCC "providesUnion" #-} M.unionWith (++) (provides unstable) (provides testing)
         -- We assume that the dependency information is the same, even from different suites
         dependsUnion = {-# SCC "dependsUnion" #-} M.union (depends unstable) (depends testing)
+        conflictsUnion = {-# SCC "conflictsUnion" #-} M.union (conflicts unstable) (conflicts testing)
+        breaksUnion = {-# SCC "breaksUnion" #-} M.union (breaks unstable) (breaks testing)
         bugsUnion = {-# SCC "bugsUnion" #-} M.unionWith (++) (bugs unstable) (bugs testing)
 
         -- This does not work, as bugs with tag "sid" would appear as new bugs
@@ -144,6 +164,7 @@ transitionRules config ai unstable testing general =
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} M.difference (builds unstable) (builds testing)
         atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} S.difference (atoms unstable) (atoms testing)
 
+        resolve :: ST.Maybe Arch -> DepRel -> [BinI]
         resolve mbArch (DepRel name mbVerReq mbArchReq)
             | checkArchReq mbArchReq = 
                 [ binI |
