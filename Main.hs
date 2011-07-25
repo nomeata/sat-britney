@@ -39,7 +39,7 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10)
+defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10) AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
@@ -92,6 +92,15 @@ opts =
     , Option "" ["migrate"]
       (ReqArg (\ss config -> parseSrc ss >>= \s -> return (config { migrateThis = Just s })) "SRC")
       "find a migration containing this src and ignoring this package's age"
+    , Option "" ["large"]
+      (NoArg (\config -> return (config { transSize = AsLargeAsPossible })))
+      "find a transition as large as possible (default)"
+    , Option "" ["small"]
+      (NoArg (\config -> return (config { transSize = AsSmallAsPossible })))
+      "find a transition as small as possible"
+    , Option "" ["any-size"]
+      (NoArg (\config -> return (config { transSize = AnySize })))
+      "find any transition (slightly faster)"
     ] 
 
 main = do
@@ -159,8 +168,13 @@ runBritney config = do
     hPrint stderr $ nest 4 (vcat (map (pp ai) desired))
     -}
 
+    let (desired', unwanted') = case transSize config of
+            AsLargeAsPossible -> (desired, unwanted)
+            AsSmallAsPossible -> (unwanted, desired)
+            AnySize -> ([], [])
+
     hPutStrLn stderr $ "Running main picosat run"
-    result <- runClauseSAT desired unwanted cnf
+    result <- runClauseSAT desired' unwanted' cnf
     case result of 
         Left clauses -> do
             hPutStrLn stderr $

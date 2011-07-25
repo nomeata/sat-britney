@@ -197,6 +197,8 @@ data GeneralInfo = GeneralInfo {
     ages :: Map SrcI Age
     }
 
+data TransSize = AsLargeAsPossible | AsSmallAsPossible | AnySize
+
 data Config = Config
     { dir :: FilePath
     , arches :: [Arch]
@@ -204,6 +206,8 @@ data Config = Config
     , archForAll :: Arch
     , minAges :: Map Urgency Age
     , defaultMinAge :: Age
+
+    , transSize :: TransSize
 
     , relaxationH :: Maybe Handle
     , verboseRelaxation :: Bool
