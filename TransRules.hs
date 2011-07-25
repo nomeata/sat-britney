@@ -8,12 +8,15 @@ import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import Data.Functor
+import Data.Function
+import Data.Ord
+import Control.Arrow ((&&&))
 
 import Types
 import LitSat
 
 transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ outdated ++ obsolete ++ tooyoung ++ buggy
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
     , conflictClauses ++ dependencies
     , desired , unwanted )
   where relaxable = conflictClauses ++ dependencies
@@ -77,6 +80,25 @@ transitionRules config ai unstable testing general =
                 -- contradict with the unique binary package rule.
                 bin <- genIndex <$> bins
             ] 
+        completeBuild = 
+            {-# SCC "completeBuild" #-}
+            -- For each source, keep all binary packages from unstable on an
+            -- architecture together. Assumes that the one-binary-package
+            -- condition is fulfilled in unstable
+            [AllOrNone binIs ("builds should not be separated") |
+                (src, bins) <- M.toList (builds unstable),
+                binPerArch <- groupBy ((==) `on` binArch . snd) .
+                              sortBy  (compare `on` binArch . snd) .
+                              map (id &&& (ai `lookupBin`)) $ bins,
+                length binPerArch > 1,
+                -- Not for arch all, not required
+                ST.isJust $ binArch (snd (head binPerArch)),
+                binGroup   <- groupBy ((==)    `on` binVersion . snd) .
+                              sortBy  (compare `on` binVersion . snd) $ binPerArch,
+                length binGroup > 1,
+                let binIs = map (genIndex . fst) binGroup
+            ]
+
         tooyoung = 
             {-# SCC "tooyoung" #-}
             -- packages need to be old enough

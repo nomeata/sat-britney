@@ -44,8 +44,11 @@ clauses2CNF clauses = HM.fromListWith (++)
 clause2CNF :: Clause AtomI -> CNF
 clause2CNF (OneOf as _) = [ reorder ais ]
     where ais = [ unIndex a | a <- as ]
-clause2CNF (AtMostOne as _) = [ reorder [-ai1, -ai2] | ai1 <- ais , ai2 <- ais , ai1 /= ai2 ]
+clause2CNF (AtMostOne as _) = [ reorder [-ai1, -ai2]
+                              | ai1 <- ais , ai2 <- ais , ai1 /= ai2 ]
     where ais = [ unIndex a | a <- as ]
+clause2CNF (AllOrNone as _) = [ reorder [-unIndex a1, unIndex a2]
+                              | (a1,a2) <- zip as (tail (cycle as))]
 clause2CNF (Implies a as _) = [ reorder (-ai: ais) ]
     where ai = unIndex a
           ais = [ unIndex a | a <- as ]

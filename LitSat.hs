@@ -3,6 +3,7 @@ module LitSat where
 data Clause a 
     = OneOf [a] String
     | AtMostOne [a] String
+    | AllOrNone [a] String
     | Implies a [a] String
     | NotBoth a a String
     | Not a String

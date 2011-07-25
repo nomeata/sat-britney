@@ -17,6 +17,9 @@ instance PP a => PP (Clause a) where
     pp ai (AtMostOne atoms reason) = 
         text "at most one of" <+> listSep empty (text "or") (map (pp ai) atoms)
         <+> text "because" <+> text reason
+    pp ai (AllOrNone atoms reason) = 
+        text "all or nothing of" <+> listSep empty (text "and") (map (pp ai) atoms)
+        <+> text "because" <+> text reason
     pp ai (Implies atom [] reason) = 
         pp ai atom <+> text "cannot be fulfilled"
         <+> text "because" <+> text reason

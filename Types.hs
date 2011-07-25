@@ -65,7 +65,11 @@ data Source = Source !SourceName !DebianVersion
 
 instance NFData Source
 
-data Binary = Binary !BinName !DebianVersion !(ST.Maybe Arch)
+data Binary = Binary
+    { binName :: !BinName
+    , binVersion :: !DebianVersion
+    , binArch :: !(ST.Maybe Arch)
+    }
     deriving (Ord, Eq)
 
 instance NFData Binary
