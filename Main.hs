@@ -12,6 +12,7 @@ import System.IO
 import System.Console.GetOpt
 import System.Exit
 import Data.Functor
+import Data.Maybe
 
 import Debian.Control
 import Debian.Control.ByteString
@@ -128,8 +129,8 @@ runBritney config = do
             exitFailure
             return []
         Right removeClause -> do
+            hPutStrLn stderr $ show (length removeClause) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
-                hPutStrLn h $ "The following " ++ show (length removeClause) ++ " clauses are removed to make testing conform:"
                 hPrint h $ nest 4 (vcat (map (pp ai) removeClause))
                 hFlush h
             return removeClause
@@ -159,9 +160,11 @@ runBritney config = do
     result <- runClauseSAT desired unwanted cnf
     case result of 
         Left clauses -> do
-            putStrLn "No suitable set of packages could be determined,"
-            putStrLn "because the following requirements conflict:"
-            putStrLn "(This should not happen, as this is detected earlier)"
+            hPutStrLn stderr $
+                "No suitable set of packages could be determined," ++
+                "because the following requirements conflict:"
+            unless (isJust (migrateThis config)) $ do
+                hPutStrLn stderr "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map (pp ai) clauses)))
         Right newAtomIs -> do
             mbDo (differenceH config) $ \h -> do
@@ -195,6 +198,8 @@ printDifference h old new = do
 
 
 removeRelated l1 l2 = filter check l1
- where  s = S.fromList [ (atom, reason) | Implies atom _ reason <- l2 ]
-        check (Implies atom _ reason) = (atom, reason) `S.notMember` s
+ where  si = S.fromList [ (atom, reason) | Implies atom _ reason <- l2 ]
+        sa = S.fromList [ (a1,a2) | NotBoth a1 a2 _ <- l2 ]
+        check c@(Implies atom _ reason) = (atom, reason) `S.notMember` si
+        check (NotBoth a1 a2 _) = (a1, a2) `S.notMember` sa
         check _ = True

@@ -23,6 +23,9 @@ instance PP a => PP (Clause a) where
     pp ai (Implies atom atoms reason) = 
         pp ai atom <+> text "implies" <+> listSep empty (text "or") (map (pp ai) atoms)
         <+> text "because" <+> text reason
+    pp ai (NotBoth atom atom2 reason) = 
+        text "not both " <+> pp ai atom <+> text "and" <+> pp ai atom2 
+        <+> text "because" <+> text reason
     pp ai (Not atom reason) = 
         text "not" <+> pp ai atom
         <+> text "because" <+> text reason

@@ -50,7 +50,7 @@ transitionRules config ai unstable testing general =
         conflictClauses =
             {-# SCC "conflictClauses" #-}
             -- Conflicts
-            [Implies (genIndex binI) [genIndex confl] ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
+            [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- M.toList conflictsUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
@@ -58,7 +58,7 @@ transitionRules config ai unstable testing general =
                 hasUpperBound vr,
                 confl <- nub (resolve arch rel)
             ] ++
-            [Implies (genIndex binI) [genIndex confl] ("the package breaks on \"" ++ BS.unpack reason ++ "\".") |
+            [NotBoth (genIndex binI) (genIndex confl) ("the package breaks on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- M.toList breaksUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,

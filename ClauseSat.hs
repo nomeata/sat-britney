@@ -49,6 +49,7 @@ clause2CNF (AtMostOne as _) = [ reorder [-ai1, -ai2] | ai1 <- ais , ai2 <- ais ,
 clause2CNF (Implies a as _) = [ reorder (-ai: ais) ]
     where ai = unIndex a
           ais = [ unIndex a | a <- as ]
+clause2CNF (NotBoth a1 a2 _) = [ reorder [- unIndex a1, - unIndex a2 ] ]
 clause2CNF (Not a _) = [ atom2Conj (-ai) ]
     where ai = unIndex a
 
