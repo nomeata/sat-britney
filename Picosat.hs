@@ -196,8 +196,13 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
     
     result <- fix $ \next -> do
         line <- hGetLine hout
-        if null line || head line `elem` "co" then next else return line
+        if null line || (head line `elem` "co" &&
+            not ("c RES: UNSAT" `isPrefixOf` line)) then next else return line
     case result of
+        ('c':' ':'R':'E':'S':':':' ':'U':'N':'S':'A':'T':_) -> do
+            hClose hout
+            waitForProcess procHandle
+            error "runPMAXSolver should not be called with unsatisfiable instances"
         "s UNSATISFIABLE" -> do
             hClose hout
             waitForProcess procHandle
