@@ -124,7 +124,7 @@ runBritney config = do
     config <- case migrateThis config of
         Nothing -> return config
         Just src -> case ai `indexSrc` src of 
-            Nothing -> hPutStr stderr ("Source " ++ show src ++ " not known") >> exitFailure
+            Nothing -> hPutStrLn stderr ("Source " ++ show src ++ " not known") >> exitFailure
             Just si -> return $ config { migrateThisI = Just si }
 
     general <- parseGeneralInfo config ai
@@ -178,7 +178,7 @@ runBritney config = do
     case result of 
         Left clauses -> do
             hPutStrLn stderr $
-                "No suitable set of packages could be determined," ++
+                "No suitable set of packages could be determined, " ++
                 "because the following requirements conflict:"
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
