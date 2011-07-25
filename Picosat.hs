@@ -128,7 +128,7 @@ relaxer relaxable cnf = do
             L.hPut stderr $ formatCNF mus
             return (Left mus)
         Right _ -> do
-            vars <- runMSUnCore cnf relaxable
+            vars <- runPMAXSolver cnf relaxable
             let (satisfied, remove) = partitionSatClauses relaxable vars
             let s = S.fromList remove
             let (removed,leftOver) = partition (`S.member`s) relaxable
@@ -153,7 +153,7 @@ runPicosatPMAX desired cnf = do
     case (ret, desired) of
         (Left mus,_) -> return (Left mus)
         (Right solution, []) -> return (Right solution)
-        (Right solution, _)  -> Right <$> runMSUnCore cnf relaxable 
+        (Right solution, _)  -> Right <$> runPMAXSolver cnf relaxable 
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
 {-
     where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
@@ -180,18 +180,27 @@ partitionSatClauses cnf vars = partition check cnf
 --        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
         check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words . fst
 
+runPMAXSolver :: CNF -> CNF -> IO [Int]
+runPMAXSolver = runMSUnCore
+
 runMSUnCore :: CNF -> CNF -> IO [Int]
-runMSUnCore cnf desired = getTemporaryDirectory  >>= \tmpdir ->
+runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
+
+runMiniMaxSat :: CNF -> CNF -> IO [Int]
+runMiniMaxSat cnf desired = do
+    ret <- runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename]) cnf desired
+    removeFile "none"
+    return ret
+
+runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO [Int]
+runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
     withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
     L.hPut handle cnfString
     hClose handle
 
-    let opts = ["-v", "0", tmpfile]
-
-    (_, Just hout, _, procHandle) <- createProcess $
-        (proc "./msuncore" opts) { std_out = CreatePipe }
+    (_, Just hout, _, procHandle) <- createProcess $ (cmd tmpfile) { std_out = CreatePipe }
     
     result <- fix $ \next -> do
         line <- hGetLine hout
