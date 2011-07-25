@@ -155,23 +155,6 @@ runPicosatPMAX desired cnf = do
         (Right solution, []) -> return (Right solution)
         (Right solution, _)  -> Right <$> runPMAXSolver cnf relaxable 
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
-{-
-    where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
-          where solSet = S.fromList solution
-                (done,todo) = partition (`S.member` solSet) desired
-        tryForce cnf lastSol [] = return lastSol
-        tryForce cnf lastSol (force:desired) = do
-            let cnf' = atom2Conj force : cnf
-            hPutStr stderr $ "Forcing one, " ++ show (length desired) ++ " left to do."
-            ret <- runPicosat cnf'
-            case ret of
-                Left _ -> do
-                    hPutStrLn stderr $ "failed"
-                    tryForce (atom2Conj (-force) : cnf) lastSol desired
-                Right solution -> do
-                    hPutStrLn stderr $ "failed"
-                    whatsLeft cnf' solution desired
--}
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses cnf vars = partition check cnf
