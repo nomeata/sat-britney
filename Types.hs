@@ -39,7 +39,7 @@ instance NFData VersionReq
 
 hasUpperBound (SLT _ ) = True
 hasUpperBound (LTE _ ) = True
-hasUpperBound (GRE _ ) = True
+hasUpperBound (EEQ _ ) = True
 hasUpperBound _ = False
 
 cmpDebianVersion :: DebianVersion -> DebianVersion -> Ordering
