@@ -136,7 +136,8 @@ relaxer relaxable cnf = do
             ret <- runPicosat (cnf ++ leftOver) 
             case ret of 
                 Left mus -> do
-                    hPutStrLn stderr $ "Relaxed CNF still unsatisfiable, retrying..."
+                    hPutStrLn stderr $ "Relaxed CNF still unsatisfiable after removing " ++
+                        show (length removed) ++ " clauses, retrying..."
                     fmap (removed ++) <$> relaxer leftOver cnf
                 Right _ -> return (Right remove)
 
@@ -148,9 +149,10 @@ runPicosatPMAX :: [Int] -> CNF -> IO (Either CNF [Int])
 runPicosatPMAX desired cnf = do
     -- Initial run, to ensure satisfiability
     ret <- runPicosat cnf
-    case ret of
-        Left mus -> return (Left mus)
-        Right solution -> Right . fst <$> runMSUnCore False cnf relaxable 
+    case (ret, desired) of
+        (Left mus,_) -> return (Left mus)
+        (Right solution, []) -> return (Right solution)
+        (Right solution, _)  -> Right . fst <$> runMSUnCore False cnf relaxable 
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
 {-
     where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
