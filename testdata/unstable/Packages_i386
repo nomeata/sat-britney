@@ -24,3 +24,4 @@ Provides: bin-B
 Package: pkg-C
 Architecture: i386
 Version: 0.2
+

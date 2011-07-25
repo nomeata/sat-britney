@@ -44,26 +44,31 @@ parseSuite config ai dir = do
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
     let ( binaryAtoms
+         ,binaryNamesList
          ,binaryDepends
          ,binaryProvides
          ,binaryConflicts
          ,binaryBreaks
          ,builtByList
          ,ai') = readPara ai binaries
-        readPara ai [] = ([], [], [], [], [], [], ai)
+        readPara ai [] = ([], [], [], [], [], [], [], ai)
         readPara ai (para:ps) =
                     ( binI:bins
+                    , binNamesEntries ++ binNames
                     , (binI,depends):deps
                     , provides ++ provs
                     , (binI,conflicts):confls
                     , (binI,breaks):brks
                     , (binI,srcI): bb
                     ,finalAi)
-          where (bins, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
+          where (bins, binNames, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
                 pkg = packageField para
                 version = DebianVersion (versionField para)
                 archS = architectureField para
-                arch = if archS == "all" then ST.Nothing else ST.Just (Arch archS)
+                (arch,onArches) = if archS == "all"
+                                  then (ST.Nothing, arches config)
+                                  else (ST.Just (Arch archS), [Arch archS])
+                binNamesEntries = [ ((BinName pkg,a),[binI]) | a <- onArches ]
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
                 depends = parseDependency $ dependsField para
@@ -109,12 +114,7 @@ parseSuite config ai dir = do
     breaks `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating binaryNames"
-    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) 
-            [ ((pkg,arch), [binI]) |
-                binI <- binaryAtoms,
-                let Binary pkg _ mbArch = ai' `lookupBin` binI,
-                arch <- case mbArch of { ST.Just arch -> [arch] ; ST.Nothing -> arches config }
-                ]
+    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) binaryNamesList
     binaryNames `deepseq` return ()
 
     -- We use the sources found in the Packages file as well, because they

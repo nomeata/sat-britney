@@ -219,9 +219,9 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
                     ) $ BS.lines satvarsS
             let vars = case concatMap BS.words vLines of 
                  ints@(_:_) -> filter (/= 0) . fmap int $ ints
-                 _ -> error $ "Cannot parse msuncore SAT output: " ++ BS.unpack satvarsS
+                 _ -> error $ "Cannot parse pmaxsatsolver SAT output: " ++ BS.unpack satvarsS
             waitForProcess procHandle
             return vars
         s -> do
-            error $ "Cannot parse msuncore status output: " ++ s
+            error $ "Cannot parse pmaxsatsolver status output: " ++ s
 
