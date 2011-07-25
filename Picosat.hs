@@ -19,6 +19,7 @@ import Distribution.Simple.Utils (withTempFile)
 import Control.Arrow ((***))
 import Debug.Trace
 import Control.Monad
+import Data.BitArray
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -127,7 +128,8 @@ relaxer relaxable cnf = do
             L.hPut stderr $ formatCNF mus
             return (Left mus)
         Right _ -> do
-            remove <- snd <$> runMSUnCore True cnf relaxable
+            vars <- runMSUnCore cnf relaxable
+            let (satisfied, remove) = partitionSatClauses relaxable vars
             let s = S.fromList remove
             let (removed,leftOver) = partition (`S.member`s) relaxable
             --let s2 = S.fromList relaxable
@@ -142,7 +144,6 @@ relaxer relaxable cnf = do
                 Right _ -> return (Right remove)
 
 
-
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion maximal with regard to these atoms.
 runPicosatPMAX :: [Int] -> CNF -> IO (Either CNF [Int])
@@ -152,7 +153,7 @@ runPicosatPMAX desired cnf = do
     case (ret, desired) of
         (Left mus,_) -> return (Left mus)
         (Right solution, []) -> return (Right solution)
-        (Right solution, _)  -> Right . fst <$> runMSUnCore False cnf relaxable 
+        (Right solution, _)  -> Right <$> runMSUnCore cnf relaxable 
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
 {-
     where whatsLeft cnf solution desired = tryForce (map atom2Conj done ++ cnf) solution todo
@@ -172,17 +173,22 @@ runPicosatPMAX desired cnf = do
                     whatsLeft cnf' solution desired
 -}
 
--- If the first parameter is True, it also returns the list of violated
--- clauses. If it is False, it returns the empty list there.
-runMSUnCore :: Bool -> CNF -> CNF -> IO ([Int],CNF)
-runMSUnCore listUnsat cnf desired = getTemporaryDirectory  >>= \tmpdir ->
+partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
+partitionSatClauses cnf vars = partition check cnf
+  where maxVar = maximum (0:map snd cnf)
+        array = listBitArray (1,maxVar) $ map (>0) vars
+--        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
+        check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words . fst
+
+runMSUnCore :: CNF -> CNF -> IO [Int]
+runMSUnCore cnf desired = getTemporaryDirectory  >>= \tmpdir ->
     withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
     L.hPut handle cnfString
     hClose handle
 
-    let opts = (if listUnsat then ("-u":) else id) ["-v", "0", tmpfile]
+    let opts = ["-v", "0", tmpfile]
 
     (_, Just hout, _, procHandle) <- createProcess $
         (proc "./msuncore" opts) { std_out = CreatePipe }
@@ -197,20 +203,16 @@ runMSUnCore listUnsat cnf desired = getTemporaryDirectory  >>= \tmpdir ->
             error "runMSUnCore should not be called with unsatisfiable instances"
         "s OPTIMUM FOUND" -> do
             satvarsS <- BS.hGetContents hout
-            let (vLines, other) = partitionEithers $ map (\l ->
-                        if BS.null l then Right l
-                        else if BS.head l == 'v' then Left (BS.drop 2 l)
-                        else Right l
+            let vLines = mapMaybe (\l ->
+                        if BS.null l then Nothing
+                        else if BS.head l == 'v' then Just (BS.drop 2 l)
+                        else Nothing
                     ) $ BS.lines satvarsS
-            let unsat = map (parseConj . BS.drop 2) $
-                        takeWhile (not . ("c CPU Time" `BS.isPrefixOf`)) $
-                        dropWhile (== "c Unsat Clauses:") $
-                        dropWhile (/= "c Unsat Clauses:") other
             let vars = case concatMap BS.words vLines of 
                  ints@(_:_) -> filter (/= 0) . fmap int $ ints
                  _ -> error $ "Cannot parse msuncore SAT output: " ++ BS.unpack satvarsS
             waitForProcess procHandle
-            return (vars, unsat)
+            return vars
         s -> do
             error $ "Cannot parse msuncore status output: " ++ s
 
