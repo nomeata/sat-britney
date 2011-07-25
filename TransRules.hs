@@ -155,10 +155,11 @@ transitionRules config ai unstable testing general =
         -- We assume that the dependency information is the same, even from different suites
         dependsUnion = {-# SCC "dependsUnion" #-} M.union (depends unstable) (depends testing)
         conflictsUnion = {-# SCC "conflictsUnion" #-} M.union (conflicts unstable) (conflicts testing)
+        breaksUnion = {-# SCC "breaksUnion" #-} M.union (breaks unstable) (breaks testing)
+
         builtByUnion = {-# SCC "builtByUnion" #-} M.union (builtBy unstable) (builtBy testing)
         buildsUnion = {-# SCC "buildsUnion" #-} M.unionWith (++) (builds unstable) (builds testing)
 
-        breaksUnion = {-# SCC "breaksUnion" #-} M.union (breaks unstable) (breaks testing)
         bugsUnion = {-# SCC "bugsUnion" #-} M.unionWith (++) (bugs unstable) (bugs testing)
 
         -- This does not work, as bugs with tag "sid" would appear as new bugs
