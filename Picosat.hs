@@ -131,20 +131,24 @@ runPicosat cnf = do
 -- satisfiable. The first argument gives the CNFs to relax
 relaxer :: CNF -> CNF -> IO (Either CNF CNF)
 relaxer relaxable cnf = do
-    ret <- runPicosat cnf
+    ret <- runPMAXSolver cnf relaxable
     case ret of
-        Left mus -> do
-            hPutStrLn stderr $ "Non-relaxable clauses are not satisfiable"
-            L.hPut stderr $ formatCNF mus
-            return (Left mus)
-        Right _ -> do
-            vars <- runPMAXSolver cnf relaxable
+        Nothing -> do
+            ret <- runPicosat cnf
+            case ret of
+                Left mus -> do
+                    hPutStrLn stderr $ "Non-relaxable clauses are not satisfiable"
+                    L.hPut stderr $ formatCNF mus
+                    return (Left mus)
+                Right _ -> do
+                    error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
+                            "yet the SAT solver found a problem. Possible bug in the solvers?"
+        Just vars -> do
             let (satisfied, remove) = partitionSatClauses relaxable vars
+            {- Code to check the PMAX-SAT solver if we do not trust it: 
             let s = S.fromList remove
             let (removed,leftOver) = partition (`S.member`s) relaxable
-            --let s2 = S.fromList relaxable
-            --case find (`S.notMember`s2) remove of { Nothing -> return () ; Just clause -> 
-            --    hPutStrLn stderr $ "Removed clause " ++ show clause ++ " not found in relaxable" }
+
             ret <- runPicosat (cnf ++ leftOver) 
             case ret of 
                 Left _ -> do
@@ -152,18 +156,26 @@ relaxer relaxable cnf = do
                         show (length removed) ++ " clauses, retrying..."
                     fmap (removed ++) <$> relaxer leftOver cnf
                 Right _ -> return (Right remove)
+            -}
+            return (Right remove)
 
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion maximal with regard to these atoms.
 runPicosatPMAX :: [Int] -> CNF -> IO (Either CNF [Int])
+runPicosatPMAX [] cnf = runPicosat cnf
 runPicosatPMAX desired cnf = do
-    -- Initial run, to ensure satisfiability
-    ret <- runPicosat cnf
-    case (ret, desired) of
-        (Left mus,_)         -> return (Left mus)
-        (Right solution, []) -> return (Right solution)
-        (Right _, _)         -> Right <$> runPMAXSolver cnf relaxable 
+    ret <- runPMAXSolver cnf relaxable
+    case ret of
+        Nothing -> do
+            ret <- runPicosat cnf
+            case ret of
+                Left mus ->
+                    return $ Left mus
+                Right _ -> do
+                    error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
+                            "yet the SAT solver found a problem. Possible bug in the solvers?"
+        Just solution -> return (Right solution)
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
@@ -173,20 +185,20 @@ partitionSatClauses cnf vars = partition check cnf
 --        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
         check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words . fst
 
-runPMAXSolver :: CNF -> CNF -> IO [Int]
+runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver = runMiniMaxSat
 
-runMSUnCore :: CNF -> CNF -> IO [Int]
+runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
 
-runMiniMaxSat :: CNF -> CNF -> IO [Int]
+runMiniMaxSat :: CNF -> CNF -> IO (Maybe [Int])
 runMiniMaxSat cnf desired = do
     ret <- runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename]) cnf desired
     -- some versions of minimaxsat leave this file lying around
     (try $ removeFile "none") :: IO (Either IOError ())
     return ret
 
-runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO [Int]
+runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
 runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
     withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
@@ -204,11 +216,11 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
         ('c':' ':'R':'E':'S':':':' ':'U':'N':'S':'A':'T':_) -> do
             hClose hout
             waitForProcess procHandle
-            error "runPMAXSolver should not be called with unsatisfiable instances"
+            return Nothing
         "s UNSATISFIABLE" -> do
             hClose hout
             waitForProcess procHandle
-            error "runPMAXSolver should not be called with unsatisfiable instances"
+            return Nothing
         "s OPTIMUM FOUND" -> do
             satvarsS <- BS.hGetContents hout
             let vLines = mapMaybe (\l ->
@@ -220,7 +232,7 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
                  ints@(_:_) -> filter (/= 0) . fmap int $ ints
                  _ -> error $ "Cannot parse pmaxsatsolver SAT output: " ++ BS.unpack satvarsS
             waitForProcess procHandle
-            return vars
+            return (Just vars)
         s -> do
             error $ "Cannot parse pmaxsatsolver status output: " ++ s
 
