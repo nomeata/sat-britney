@@ -29,6 +29,7 @@ import Control.Arrow ((***))
 import Debug.Trace
 import Control.Monad
 import Data.BitArray
+import Control.Exception.Base (try)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -173,7 +174,7 @@ partitionSatClauses cnf vars = partition check cnf
         check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words . fst
 
 runPMAXSolver :: CNF -> CNF -> IO [Int]
-runPMAXSolver = runMSUnCore
+runPMAXSolver = runMiniMaxSat
 
 runMSUnCore :: CNF -> CNF -> IO [Int]
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
@@ -181,7 +182,8 @@ runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filen
 runMiniMaxSat :: CNF -> CNF -> IO [Int]
 runMiniMaxSat cnf desired = do
     ret <- runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename]) cnf desired
-    removeFile "none"
+    -- some versions of minimaxsat leave this file lying around
+    (try $ removeFile "none") :: IO (Either IOError ())
     return ret
 
 runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO [Int]
