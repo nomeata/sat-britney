@@ -192,11 +192,7 @@ runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
 
 runMiniMaxSat :: CNF -> CNF -> IO (Maybe [Int])
-runMiniMaxSat cnf desired = do
-    ret <- runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename]) cnf desired
-    -- some versions of minimaxsat leave this file lying around
-    (try $ removeFile "none") :: IO (Either IOError ())
-    return ret
+runMiniMaxSat = runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename])
 
 runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
 runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
