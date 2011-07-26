@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 module Picosat
     ( Conj
     , CNF
@@ -7,6 +7,7 @@ module Picosat
     , formatCNF
     , reorder
     , runPicosatPMAX
+    , runPicosatPMINMAX
     )
     where
 
@@ -31,6 +32,7 @@ import Control.Monad
 import Data.BitArray
 import Control.Exception.Base (try)
 
+import qualified Data.IntSet as IS
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Map ((!))
@@ -177,6 +179,39 @@ runPicosatPMAX desired cnf = do
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just solution -> return (Right solution)
     where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
+
+-- Takes a CNF and a list of desired atoms (positive or negative), and it finds
+-- a solution that is set-inclusion minimal with regard to these atoms, but
+-- includes at least one.
+runPicosatPMIN1 :: [Int] -> CNF -> IO (Maybe [Int])
+runPicosatPMIN1 [] cnf = error $ "Cannot call runPicosatPMIN1 with an empty set of desired clauses"
+runPicosatPMIN1 desired cnf = runPMAXSolver cnf (disj:relaxable)
+    where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
+          disj = reorder desired
+
+-- Takes a CNF and a list of desired atoms (positive or negative), and it finds
+-- a set-inclusion minimal solutions that covers the set-inclusion maximal
+-- solution, both are returned.
+runPicosatPMINMAX :: [Int] -> CNF -> IO (Either CNF ([Int],[[Int]]))
+runPicosatPMINMAX [] cnf = do 
+    ret <- runPicosat cnf
+    case ret of
+        Left mus -> return (Left mus)
+        Right solution -> return (Right (solution, [solution]))
+runPicosatPMINMAX desired cnf = do
+    ret <- runPicosatPMAX desired cnf
+    case ret of 
+        Left mus -> return (Left mus)
+        Right maxSol -> do
+            Right . (maxSol,) <$> step (filter (`IS.member` desiredS) maxSol)
+  where desiredS    = IS.fromList desired
+        step []     = return []
+        step (x:xs) = do
+            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") id <$>
+                runPicosatPMAX (map negate desired) (atom2Conj x : cnf)
+            let aMinSolS = IS.fromList aMinSol
+                todo = filter (`IS.member` aMinSolS) xs
+            (aMinSol :) <$> step todo
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses cnf vars = partition check cnf
