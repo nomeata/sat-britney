@@ -197,7 +197,8 @@ data GeneralInfo = GeneralInfo {
     ages :: Map SrcI Age
     }
 
-data TransSize = AsLargeAsPossible | AsSmallAsPossible | AnySize
+data TransSize = AsLargeAsPossible | AsSmallAsPossible | ManySmall | AnySize
+    deriving (Eq)
 
 data Config = Config
     { dir :: FilePath

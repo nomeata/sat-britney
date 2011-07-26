@@ -210,7 +210,7 @@ runPicosatPMINMAX desired cnf = do
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") id <$>
                 runPicosatPMAX (map negate desired) (atom2Conj x : cnf)
             let aMinSolS = IS.fromList aMinSol
-                todo = filter (`IS.member` aMinSolS) xs
+                todo = filter (`IS.notMember` aMinSolS) xs
             (aMinSol :) <$> step todo
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)

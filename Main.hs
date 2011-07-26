@@ -98,6 +98,9 @@ opts =
     , Option "" ["small"]
       (NoArg (\config -> return (config { transSize = AsSmallAsPossible })))
       "find a transition as small as possible"
+    , Option "" ["many-small"]
+      (NoArg (\config -> return (config { transSize = ManySmall })))
+      "find a large transition and split it into many small transitions when printing hints"
     , Option "" ["any-size"]
       (NoArg (\config -> return (config { transSize = AnySize })))
       "find any transition (slightly faster)"
@@ -170,11 +173,15 @@ runBritney config = do
 
     let (desired', unwanted') = case transSize config of
             AsLargeAsPossible -> (desired, unwanted)
+            ManySmall         -> (desired, unwanted)
             AsSmallAsPossible -> (unwanted, desired)
-            AnySize -> ([], [])
+            AnySize           -> ([], [])
 
     hPutStrLn stderr $ "Running main picosat run"
-    result <- runClauseSAT desired' unwanted' cnf
+    result <- if transSize config == ManySmall
+        then runClauseMINMAXSAT desired' unwanted' cnf
+        else fmap (\res -> (res,[res])) <$>
+             runClauseSAT desired' unwanted' cnf
     case result of 
         Left clauses -> do
             hPutStrLn stderr $
@@ -183,7 +190,7 @@ runBritney config = do
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map (pp ai) clauses)))
-        Right newAtomIs -> do
+        Right (newAtomIs,smallTransitions) -> do
             mbDo (differenceH config) $ \h -> do
                 let newAtoms = S.map (ai `lookupAtom`) newAtomIs
                 let (newSource, newBinaries, _) = splitAtoms newAtoms
@@ -194,7 +201,8 @@ runBritney config = do
                 hFlush h
 
             mbDo (hintsH config) $ \h -> do
-                L.hPut h $ generateHints ai testing unstable newAtomIs
+                forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
+                    L.hPut h $ generateHints ai testing unstable thisTransitionNewAtomsIs
                 hFlush h
 
     hPutStrLn stderr $ "Done"

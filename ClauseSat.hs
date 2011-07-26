@@ -64,8 +64,18 @@ runClauseSAT :: [AtomI] -> [AtomI] -> CNF2Clause AtomI -> IO (Either [Clause Ato
 runClauseSAT desired unwanted cnf = do
     result <- runPicosatPMAX (map unIndex desired ++ map (negate . unIndex) unwanted) (onlyCNF cnf)
     case result of
-        Left core -> return (Left (cnf2Clause cnf core))
-        Right vars -> return $ Right $ S.fromList [ Index i | i <- vars, i > 0] 
+        Left core -> return  $ Left $ cnf2Clause cnf core
+        Right vars -> return $ Right $ varsToSet vars
+
+runClauseMINMAXSAT :: [AtomI] -> [AtomI] -> CNF2Clause AtomI -> IO (Either [Clause AtomI] (S.Set AtomI, [S.Set AtomI]))
+runClauseMINMAXSAT desired unwanted cnf = do
+    result <- runPicosatPMINMAX (map unIndex desired ++ map (negate . unIndex) unwanted) (onlyCNF cnf)
+    case result of
+        Left core -> return  $ Left $ cnf2Clause cnf core
+        Right (vars,varss) -> return $ Right $ (varsToSet vars, map varsToSet varss)
+
+varsToSet :: [Int] -> S.Set AtomI
+varsToSet vars = S.fromList [ Index i | i <- vars, i > 0] 
 
 runRelaxer :: CNF2Clause a -> CNF2Clause a -> IO (Either [Clause a] [Clause a])
 runRelaxer relaxable cnf = do

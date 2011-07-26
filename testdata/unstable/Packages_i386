@@ -25,3 +25,6 @@ Package: pkg-C
 Architecture: i386
 Version: 0.2
 
+Package: pkg-N
+Architecture: i386
+Version: 0.1
