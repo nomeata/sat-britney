@@ -10,16 +10,18 @@ import Types
 
 generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> S.Set AtomI -> L.ByteString
 generateHints ai testing unstable newAtoms =
-    (`L.append` "\n" ) . ("easy " `L.append`) . L.unwords $
-    [ L.fromChunks [srcName , "/", srcVersion ]
-    | srcI <- S.toList addedSources
-    , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
-    ] ++ 
-    [ L.fromChunks [srcName , "/", srcVersion, "/", arch ]
-    | (srcI,Arch arch) <- S.toList binNMUedSources
-    , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
-    ]
-  where (newSourcesIs, newBinariesIs, _) = splitAtomIs ai newAtoms
+    (if length hintStrings == 1 then ("# " `L.append`) else id) .
+    (`L.append` "\n" ) . ("easy " `L.append`) . L.unwords $ hintStrings
+  where hintStrings = 
+            [ L.fromChunks [srcName , "/", srcVersion ]
+            | srcI <- S.toList addedSources
+            , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
+            ] ++ 
+            [ L.fromChunks [srcName , "/", srcVersion, "/", arch ]
+            | (srcI,Arch arch) <- S.toList binNMUedSources
+            , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
+            ]
+        (newSourcesIs, newBinariesIs, _) = splitAtomIs ai newAtoms
         addedSources = newSourcesIs `S.difference` sources testing
         addedBinaries = newBinariesIs `S.difference` binaries testing
         
