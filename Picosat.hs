@@ -252,8 +252,6 @@ runAPMAXSolver cmd cnf desired =
     L.hPut handle cnfString
     hClose handle
 
-    L.writeFile "/tmp/input.wcnf" cnfString
-
     (_, Just hout, _, procHandle) <- createProcess $ (cmd tmpfile) { std_out = CreatePipe }
     
     lines <- filter (not . BS.null) . BS.lines <$> BS.hGetContents hout
