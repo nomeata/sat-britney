@@ -15,8 +15,8 @@ Source: src-A
 Architecture: all
 
 Package: bin-renamed-B
-Version: 0.1
-Source: src-B (0.1)
+Version: 0.2
+Source: src-B
 Architecture: i386
 Depends: bin3-A (>= 0.2)
 Provides: bin-B

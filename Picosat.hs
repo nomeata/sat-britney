@@ -26,7 +26,7 @@ import Data.Function
 import Data.Either
 import System.Directory
 import Distribution.Simple.Utils (withTempFile)
-import Control.Arrow ((***))
+import Control.Arrow 
 import Debug.Trace
 import Control.Monad
 import Data.BitArray
@@ -224,7 +224,7 @@ partitionSatClauses cnf vars = partition check cnf
         check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words . fst
 
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
-runPMAXSolver = runMiniMaxSat
+runPMAXSolver = runClasp
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
@@ -232,9 +232,12 @@ runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filen
 runMiniMaxSat :: CNF -> CNF -> IO (Maybe [Int])
 runMiniMaxSat = runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename])
 
+runClasp :: CNF -> CNF -> IO (Maybe [Int])
+runClasp = runAPMAXSolver (\filename ->  proc "clasp" $ ["--quiet=1,2",filename])
+
 runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
 runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
-    withTempFile tmpdir "sat-britney.dimacs" $ \tmpfile handle -> do
+    withTempFile tmpdir "sat-britney-.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
     L.hPut handle cnfString
@@ -242,31 +245,27 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
 
     (_, Just hout, _, procHandle) <- createProcess $ (cmd tmpfile) { std_out = CreatePipe }
     
-    result <- fix $ \next -> do
-        line <- hGetLine hout
-        if null line || (head line `elem` "co" &&
-            not ("c RES: UNSAT" `isPrefixOf` line)) then next else return line
-    case result of
-        ('c':' ':'R':'E':'S':':':' ':'U':'N':'S':'A':'T':_) -> do
+    lines <- filter (not . BS.null) . BS.lines <$> BS.hGetContents hout
+    let (slines,(vlines,rest)) =
+            second (partition ((=='v') . BS.head)) .
+            partition ((=='s') . BS.head) $
+            lines
+    case slines of 
+        []      -> error $ "PMAX-SAT solver returned no \"s\"-line."
+        (_:_:_) -> do
+            error $ "PMAX-SAT solver returned more than one \"s\"-line." ++ 
+                    BS.unpack (BS.unlines slines)
+        [sline] | sline == "s UNSATISFIABLE" -> do
             hClose hout
             waitForProcess procHandle
             return Nothing
-        "s UNSATISFIABLE" -> do
-            hClose hout
-            waitForProcess procHandle
-            return Nothing
-        "s OPTIMUM FOUND" -> do
-            satvarsS <- BS.hGetContents hout
-            let vLines = mapMaybe (\l ->
-                        if BS.null l then Nothing
-                        else if BS.head l == 'v' then Just (BS.drop 2 l)
-                        else Nothing
-                    ) $ BS.lines satvarsS
-            let vars = case concatMap BS.words vLines of 
+                | sline == "s OPTIMUM FOUND" -> do
+            let vars = case concatMap (BS.words . BS.drop 2) vlines of 
                  ints@(_:_) -> filter (/= 0) . fmap int $ ints
-                 _ -> error $ "Cannot parse pmaxsatsolver SAT output: " ++ BS.unpack satvarsS
+                 _ -> error $ "Cannot parse pmaxsatsolver assignment output: " ++
+                              BS.unpack (BS.unlines slines)
             waitForProcess procHandle
             return (Just vars)
-        s -> do
-            error $ "Cannot parse pmaxsatsolver status output: " ++ s
+                | otherwise -> do
+            error $ "Cannot parse pmaxsatsolver status output: " ++ BS.unpack sline
 
