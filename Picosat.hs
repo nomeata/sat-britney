@@ -223,8 +223,13 @@ partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition
   where array = listBitArray (1,maxVar) $ map (>0) vars
 --        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
         check = any (\i -> (i > 0) == lookupBit array (abs i))
+
+
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
-runPMAXSolver = runClasp
+runPMAXSolver cnf desired = do
+    hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
+    fmap fixSol <$> runClasp cnf desired
+  where (cnf',desired', fixSol) = simplifyCNF cnf desired
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
@@ -236,7 +241,9 @@ runClasp :: CNF -> CNF -> IO (Maybe [Int])
 runClasp = runAPMAXSolver (\filename ->  proc "clasp" $ ["--quiet=1,2",filename])
 
 runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
-runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
+runAPMAXSolver cmd cnf desired =
+    if null (fst cnf) && null (fst desired) then return (Just [1..snd cnf]) else do
+    getTemporaryDirectory  >>= \tmpdir -> do
     withTempFile tmpdir "sat-britney-.dimacs" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
@@ -270,3 +277,27 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
             return (Just vars)
                 | otherwise -> do
             error $ "Cannot parse pmaxsatsolver status output: " ++ BS.unpack sline
+
+simplifyCNF :: CNF -> CNF -> (CNF, CNF, [Int] -> [Int])
+simplifyCNF (hard,maxVar) (soft,_) = case singletons of
+            [] -> ((hard,maxVar), (soft,maxVar), id)
+            _ -> (\(h,s,f) -> (h,s,map fixAtom . f)) $ simplifyCNF (hard',maxVar) (soft',maxVar)
+  where (singletons, others) = partitionEithers $ 
+            map(\l -> case l of [s] -> Left s ; _ -> Right l ) hard
+        (trueAtoms,falseAtoms) = partition (>0) singletons
+        trueAtomsA  = bitArray (1,maxVar) [ (i, True) | i <- trueAtoms]
+        falseAtomsA = bitArray (1,maxVar) [ (-i, True) | i <- falseAtoms]
+        surelyTrueAtom i = if i > 0 then lookupBit trueAtomsA    i
+                                    else lookupBit falseAtomsA (-i)
+        surelyTrueConjs = any surelyTrueAtom
+        known i =  lookupBit trueAtomsA a || lookupBit falseAtomsA a
+            where a = abs i
+        hard' = map (filter (not . known)) .
+                filter (not . surelyTrueConjs) $ others 
+        soft' = filter (not . null) .
+                map (filter (not . known)) .
+                filter (not . surelyTrueConjs) $ soft 
+        fixAtom i | lookupBit trueAtomsA a  = a
+                  | lookupBit falseAtomsA a = -a 
+                  | otherwise               = i
+          where a = abs i
