@@ -3,9 +3,10 @@ module Picosat
     ( Conj
     , CNF
     , relaxer 
+    , conjs2Cnf
     , atom2Conj
+    , atoms2Conj
     , formatCNF
-    , reorder
     , runPicosatPMAX
     , runPicosatPMINMAX
     )
@@ -37,54 +38,52 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Map ((!))
 
-type CNF = [Conj]
+type CNF = ([Conj], Int)
 -- Conj is in DIMACS format, e.g. list of digits, followed by "0\n"
 -- Also, remember largest variable
-type Conj = (BS.ByteString, Int)
+type Conj = BS.ByteString
 
-safeMaximum [] = 0
-safeMaximum l = maximum l
+atoms2Conj :: [Int] -> Conj
+atoms2Conj ls = BS.pack $ unwords (map show (sortBy (compare `on` abs) ls)) ++ " 0\n"
 
-reorder :: [Int] -> Conj
-reorder ls = m `seq` (BS.pack $ unwords (map show (sortBy (compare `on` abs) ls)) ++ " 0\n" , m)
-  where m = maximum (map abs ls)
+conjs2Cnf :: Int -> [Conj] -> CNF
+conjs2Cnf m conjs = m `seq` (conjs, m)
 
 atom2Conj :: Int -> Conj
-atom2Conj i = (BS.pack $ show i ++ " 0\n", i)
+atom2Conj i = BS.pack $ show i ++ " 0\n"
 
 formatCNF :: CNF -> L.ByteString
-formatCNF cnf = L.concat
+formatCNF (conjs,maxVar) = L.concat
     [ L.pack "c LitSat CNF generator\n"
-    , L.pack $unwords ["p", "cnf", show maxVar, show numClauses] ++ "\n"
-    , body
+    , L.pack $unwords ["p", "cnf", show maxVar, show (length conjs)] ++ "\n"
+    , L.fromChunks conjs
     ]
-  where numClauses = length cnf
-        (body, maxVar) = (L.fromChunks *** safeMaximum) (unzip cnf)
 
 formatCNFPMAX :: CNF -> CNF -> L.ByteString
-formatCNFPMAX cnf relaxable = L.concat $
+formatCNFPMAX (conjs, maxVar1) (relaxable, maxVar2) = L.concat $
     [ L.pack "c LitSat CNF generator\n"
     , L.pack $ unwords
         ["p", "wcnf", show maxVar, show (numClauses + numRelaxable), topN ] ++ "\n"
-    , body1
-    , body2 ]
-  where numClauses = length cnf
+    , L.fromChunks (prependEach top conjs)
+    , L.fromChunks (prependEach soft relaxable)
+    ]
+  where numClauses = length conjs
         numRelaxable = length relaxable
         topN = show (numRelaxable + 2)
         top = BS.pack (topN ++ " ")
         soft = BS.pack ("1 ")
-        (body1, maxVar1) = (L.fromChunks . prependEach top  *** safeMaximum) (unzip cnf)
-        (body2, maxVar2) = (L.fromChunks . prependEach soft *** safeMaximum) (unzip relaxable)
         maxVar = maxVar1 `max` maxVar2
         prependEach a [] = []
         prependEach a l = (a:) . intersperse a $ l
 
 
 parseConj :: BS.ByteString -> Conj
-parseConj = reorder . filter (/=0) . map int . BS.words
+parseConj = atoms2Conj . filter (/=0) . map int . BS.words
                     
-parseCNF :: BS.ByteString -> CNF
-parseCNF = map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines
+parseCNF :: Int -> BS.ByteString -> CNF
+parseCNF m bs = 
+    ( map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines $ bs
+    , m )
 
 runPicosat :: CNF -> IO (Either CNF [Int])
 runPicosat cnf = do
@@ -111,7 +110,7 @@ runPicosat cnf = do
             hClose hout
             musString <- BS.hGetContents coreIn
             waitForProcess procHandle
-            return (Left (parseCNF musString))
+            return (Left (parseCNF (snd cnf) musString))
         "s SATISFIABLE" -> do
             hClose coreIn
             satvarsS <- BS.hGetContents hout
@@ -178,16 +177,16 @@ runPicosatPMAX desired cnf = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just solution -> return (Right solution)
-    where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
+    where relaxable = (map (\i -> BS.pack $ show i ++ " 0\n") desired, snd cnf)
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion minimal with regard to these atoms, but
 -- includes at least one.
 runPicosatPMIN1 :: [Int] -> CNF -> IO (Maybe [Int])
 runPicosatPMIN1 [] cnf = error $ "Cannot call runPicosatPMIN1 with an empty set of desired clauses"
-runPicosatPMIN1 desired cnf = runPMAXSolver cnf (disj:relaxable)
-    where relaxable = map (\i -> (BS.pack $ show i ++ " 0\n", i)) desired
-          disj = reorder desired
+runPicosatPMIN1 desired cnf = runPMAXSolver cnf relaxable
+    where relaxable = (disj : map (\i -> BS.pack $ show i ++ " 0\n") desired, snd cnf)
+          disj = atoms2Conj desired
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a set-inclusion minimal solutions that covers the set-inclusion maximal
@@ -209,7 +208,7 @@ runPicosatPMINMAX desired cnf = do
         step (x:xs) = do
             hPutStrLn stderr $ show (length xs + 1) ++ " clauses left while finding a small solution..."
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") id <$>
-                runPicosatPMAX (map negate desired) (atom2Conj x : cnf)
+                runPicosatPMAX (map negate desired) (first (atom2Conj x :) cnf)
             let aMinSolS = IS.fromList aMinSol
                 todo = filter (`IS.notMember` aMinSolS) xs
             when (x `IS.notMember` aMinSolS) $
@@ -217,11 +216,10 @@ runPicosatPMINMAX desired cnf = do
             (aMinSol :) <$> step todo
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
-partitionSatClauses cnf vars = partition check cnf
-  where maxVar = maximum (0:map snd cnf)
-        array = listBitArray (1,maxVar) $ map (>0) vars
+partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
+  where array = listBitArray (1,maxVar) $ map (>0) vars
 --        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
-        check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words . fst
+        check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words
 
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver = runClasp
@@ -242,6 +240,8 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
 
     L.hPut handle cnfString
     hClose handle
+
+    L.writeFile "/tmp/input.wcnf" cnfString
 
     (_, Just hout, _, procHandle) <- createProcess $ (cmd tmpfile) { std_out = CreatePipe }
     
@@ -268,4 +268,3 @@ runAPMAXSolver cmd cnf desired = getTemporaryDirectory  >>= \tmpdir ->
             return (Just vars)
                 | otherwise -> do
             error $ "Cannot parse pmaxsatsolver status output: " ++ BS.unpack sline
-

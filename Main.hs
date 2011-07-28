@@ -137,7 +137,7 @@ runBritney config = do
         relaxableClauses = clauses2CNF relaxableT
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
-    removeClauseE <- runRelaxer relaxableClauses cnfT
+    removeClauseE <- runRelaxer (maxIndex ai) relaxableClauses cnfT
     removeClause <- case removeClauseE of
         Left mus -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
@@ -158,7 +158,7 @@ runBritney config = do
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
-        L.hPut h $ formatCNF (onlyCNF cnf)
+        L.hPut h $ formatCNF (onlyCNF (maxIndex ai) cnf)
         hFlush h
 
     mbDo (clausesH config) $ \h -> do
@@ -179,9 +179,9 @@ runBritney config = do
 
     hPutStrLn stderr $ "Running main picosat run"
     result <- if transSize config == ManySmall
-        then runClauseMINMAXSAT desired' unwanted' cnf
+        then runClauseMINMAXSAT (maxIndex ai) desired' unwanted' cnf
         else fmap (\res -> (res,[res])) <$>
-             runClauseSAT desired' unwanted' cnf
+             runClauseSAT (maxIndex ai) desired' unwanted' cnf
     case result of 
         Left clauses -> do
             hPutStrLn stderr $

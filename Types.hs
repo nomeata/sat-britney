@@ -144,6 +144,9 @@ genIndex (Index i) = Index i
 
 type AtomIndex = (M.Map Atom Int, M.Map Int Atom, Int)
 
+maxIndex :: AtomIndex -> AtomI
+maxIndex (_,_,i) = Index (pred i)
+
 emptyIndex :: AtomIndex
 emptyIndex = (M.empty, M.empty, 1)
 
