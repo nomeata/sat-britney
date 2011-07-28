@@ -278,6 +278,10 @@ runAPMAXSolver cmd cnf desired =
                 | otherwise -> do
             error $ "Cannot parse pmaxsatsolver status output: " ++ BS.unpack sline
 
+-- | This takes hard and soft clauses and propagats constants (e.g. variables
+-- fixed by a top level clause), removing variables from clauses or clauses
+-- that are known.
+-- TODO: Detect a conflict in the constant variables.
 simplifyCNF :: CNF -> CNF -> (CNF, CNF, [Int] -> [Int])
 simplifyCNF (hard,maxVar) (soft,_) = case singletons of
             [] -> ((hard,maxVar), (soft,maxVar), id)
