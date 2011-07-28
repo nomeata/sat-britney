@@ -201,17 +201,19 @@ runPicosatPMINMAX [] cnf = do
         Left mus -> return (Left mus)
         Right solution -> return (Right (solution, [solution]))
 runPicosatPMINMAX desired cnf = do
-    ret <- runPicosatPMAX desired cnf
+    ret <- runPicosatPMAX desired cnf'
     case ret of 
         Left mus -> return (Left mus)
         Right maxSol -> do
-            Right . (maxSol,) <$> step (filter (`IS.member` desiredS) maxSol)
-  where desiredS    = IS.fromList desired
+            let maxSol' = fixSol maxSol
+            Right . (maxSol',) <$> step (filter (`IS.member` desiredS) maxSol')
+  where (cnf', _, fixSol) = simplifyCNF cnf ([], snd cnf)
+        desiredS    = IS.fromList desired
         step []     = return []
         step (x:xs) = do
             hPutStrLn stderr $ show (length xs + 1) ++ " clauses left while finding a small solution..."
-            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") id <$>
-                runPicosatPMAX (map negate desired) (first (atom2Conj x :) cnf)
+            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") fixSol <$>
+                runPicosatPMAX (map negate desired) (first (atom2Conj x :) cnf')
             let aMinSolS = IS.fromList aMinSol
                 todo = filter (`IS.notMember` aMinSolS) xs
             when (x `IS.notMember` aMinSolS) $
@@ -227,8 +229,8 @@ partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition
 
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver cnf desired = do
-    hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
-    fmap fixSol <$> runClasp cnf desired
+    -- hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
+    fmap fixSol <$> runMSUnCore cnf' desired'
   where (cnf',desired', fixSol) = simplifyCNF cnf desired
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
