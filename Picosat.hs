@@ -41,22 +41,25 @@ import Data.Map ((!))
 type CNF = ([Conj], Int)
 -- Conj is in DIMACS format, e.g. list of digits, followed by "0\n"
 -- Also, remember largest variable
-type Conj = BS.ByteString
+type Conj = [Int]
 
 atoms2Conj :: [Int] -> Conj
-atoms2Conj ls = BS.pack $ unwords (map show (sortBy (compare `on` abs) ls)) ++ " 0\n"
+atoms2Conj = sortBy (compare `on` abs)
+
+conj2Line :: Conj -> BS.ByteString
+conj2Line ls = BS.pack $ unwords (map show ls) ++ " 0\n"
 
 conjs2Cnf :: Int -> [Conj] -> CNF
 conjs2Cnf m conjs = m `seq` (conjs, m)
 
 atom2Conj :: Int -> Conj
-atom2Conj i = BS.pack $ show i ++ " 0\n"
+atom2Conj i = [i]
 
 formatCNF :: CNF -> L.ByteString
 formatCNF (conjs,maxVar) = L.concat
     [ L.pack "c LitSat CNF generator\n"
-    , L.pack $unwords ["p", "cnf", show maxVar, show (length conjs)] ++ "\n"
-    , L.fromChunks conjs
+    , L.pack $ unwords ["p", "cnf", show maxVar, show (length conjs)] ++ "\n"
+    , L.fromChunks $ map conj2Line conjs
     ]
 
 formatCNFPMAX :: CNF -> CNF -> L.ByteString
@@ -64,8 +67,8 @@ formatCNFPMAX (conjs, maxVar1) (relaxable, maxVar2) = L.concat $
     [ L.pack "c LitSat CNF generator\n"
     , L.pack $ unwords
         ["p", "wcnf", show maxVar, show (numClauses + numRelaxable), topN ] ++ "\n"
-    , L.fromChunks (prependEach top conjs)
-    , L.fromChunks (prependEach soft relaxable)
+    , L.fromChunks $ prependEach top  $ map conj2Line conjs
+    , L.fromChunks $ prependEach soft $ map conj2Line relaxable
     ]
   where numClauses = length conjs
         numRelaxable = length relaxable
@@ -177,7 +180,7 @@ runPicosatPMAX desired cnf = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just solution -> return (Right solution)
-    where relaxable = (map (\i -> BS.pack $ show i ++ " 0\n") desired, snd cnf)
+    where relaxable = (map atom2Conj desired, snd cnf)
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion minimal with regard to these atoms, but
@@ -185,7 +188,7 @@ runPicosatPMAX desired cnf = do
 runPicosatPMIN1 :: [Int] -> CNF -> IO (Maybe [Int])
 runPicosatPMIN1 [] cnf = error $ "Cannot call runPicosatPMIN1 with an empty set of desired clauses"
 runPicosatPMIN1 desired cnf = runPMAXSolver cnf relaxable
-    where relaxable = (disj : map (\i -> BS.pack $ show i ++ " 0\n") desired, snd cnf)
+    where relaxable = (disj : map atom2Conj desired, snd cnf)
           disj = atoms2Conj desired
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
@@ -219,8 +222,7 @@ partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
   where array = listBitArray (1,maxVar) $ map (>0) vars
 --        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
-        check = any (\i -> (i > 0) == lookupBit array (abs i)) . map int . init . BS.words
-
+        check = any (\i -> (i > 0) == lookupBit array (abs i))
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver = runClasp
 
