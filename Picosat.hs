@@ -301,7 +301,9 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
             [] -> if isValidMask finalMask
                   then Just ((hard,maxVar), (soft,maxVar), finalMask)
                   else Nothing
-            _  -> go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
+            _  -> if any null hard'
+                  then Nothing
+                  else go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
           where 
             (singletons, others) = partitionEithers $ 
                 map(\l -> case l of [s] -> Left s ; _ -> Right l ) hard
