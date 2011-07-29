@@ -204,10 +204,17 @@ runPicosatPMINMAX [] cnf = do
         Left mus -> return (Left mus)
         Right solution -> return (Right (solution, [solution]))
 runPicosatPMINMAX desired cnf = do
-    ret <- runPicosatPMAX desired cnf'
+    ret <- runPMAXSolver cnf' (map atom2Conj desired, snd cnf)
     case ret of 
-        Left mus -> return (Left mus)
-        Right maxSol -> do
+        Nothing -> do
+            ret <- runPicosat cnf
+            case ret of
+                Left mus ->
+                    return $ Left mus
+                Right _ -> do
+                    error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
+                            "yet the SAT solver found a problem. Possible bug in the solvers?"
+        Just maxSol -> do
             let maxSol' = applyMask known maxSol
             Right . (maxSol',) <$> step (filter (`IS.member` desiredS) maxSol')
   where (cnf', _, known) = simplifyCNF cnf ([], snd cnf)
