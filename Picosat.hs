@@ -149,7 +149,7 @@ relaxer relaxable cnf = do
                     return (Left mus)
                 Right _ -> do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
-                            "yet the SAT solver found a problem. Possible bug in the solvers?"
+                            "yet the SAT solver found a solution. Possible bug in the solvers?"
         Just vars -> do
             let (satisfied, remove) = partitionSatClauses relaxable vars
             {- Code to check the PMAX-SAT solver if we do not trust it: 
@@ -204,7 +204,9 @@ runPicosatPMINMAX [] cnf = do
         Left mus -> return (Left mus)
         Right solution -> return (Right (solution, [solution]))
 runPicosatPMINMAX desired cnf = do
-    ret <- runPMAXSolver cnf' (map atom2Conj desired, snd cnf)
+    ret <- if isJust sret
+           then runPMAXSolver cnf' (map atom2Conj desired, snd cnf)
+           else return Nothing
     case ret of 
         Nothing -> do
             ret <- runPicosat cnf
@@ -217,7 +219,7 @@ runPicosatPMINMAX desired cnf = do
         Just maxSol -> do
             let maxSol' = applyMask known maxSol
             Right . (maxSol',) <$> step (filter (`IS.member` desiredS) maxSol')
-  where (cnf', _, known) = simplifyCNF cnf ([], snd cnf)
+  where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf ([], snd cnf)
         desiredS    = IS.fromList desired
         step []     = return []
         step (x:xs) = do
@@ -241,8 +243,9 @@ partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver cnf desired = do
     -- hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
-    fmap (applyMask known) <$> runMSUnCore cnf' desired'
-  where (cnf',desired', known) = simplifyCNF cnf desired
+    case simplifyCNF cnf desired of
+        Just (cnf',desired', known) -> fmap (applyMask known) <$> runMSUnCore cnf' desired'
+        Nothing -> return Nothing
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
@@ -292,37 +295,36 @@ runAPMAXSolver cmd cnf desired =
 -- | This takes hard and soft clauses and propagats constants (e.g. variables
 -- fixed by a top level clause), removing variables from clauses or clauses
 -- that are known.
--- TODO: Detect a conflict in the constant variables.
-
-simplifyCNF :: CNF -> CNF -> (CNF, CNF, AssignmentMask)
-simplifyCNF (hard,maxVar) (soft,_) = case singletons of
-            [] -> ((hard,maxVar), (soft,maxVar), emptyMask)
-            _  -> (\(h,s,f) -> (h,s,knownAtomsA `unionMask` f)) $
-                  simplifyCNF (hard',maxVar) (soft',maxVar)
-  where (singletons, others) = partitionEithers $ 
-            map(\l -> case l of [s] -> Left s ; _ -> Right l ) hard
-        knownAtomsA = bitArray (-maxVar, maxVar) [ (i, True) | i <- singletons] 
-        surelyTrueAtom i = lookupBit knownAtomsA i
-        surelyTrueConjs = any surelyTrueAtom
-        knownFalse i = lookupBit knownAtomsA (-i)
-        hard' = map (filter (not . knownFalse)) .
-                filter (not . surelyTrueConjs) $ others 
-        soft' = filter (not . null) .
-                map (filter (not . knownFalse)) .
-                filter (not . surelyTrueConjs) $ soft 
+simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
+simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
+  where go ms (hard,maxVar) (soft,_) = case singletons of
+            [] -> if isValidMask finalMask
+                  then Just ((hard,maxVar), (soft,maxVar), finalMask)
+                  else Nothing
+            _  -> go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
+          where 
+            (singletons, others) = partitionEithers $ 
+                map(\l -> case l of [s] -> Left s ; _ -> Right l ) hard
+            knownAtomsA = bitArray (-maxVar, maxVar) [ (i, True) | i <- singletons] 
+            surelyTrueAtom i = lookupBit knownAtomsA i
+            surelyTrueConjs = any surelyTrueAtom
+            knownFalse i = lookupBit knownAtomsA (-i)
+            hard' = map (filter (not . knownFalse)) .
+                    filter (not . surelyTrueConjs) $ others 
+            soft' = filter (not . null) .
+                    map (filter (not . knownFalse)) .
+                    filter (not . surelyTrueConjs) $ soft 
+            finalMask = unionsMask ms
         emptyMask = bitArray (-maxVar, maxVar) []
+
+isValidMask mask = not $ any (\i -> lookupBit mask i && lookupBit mask (-i) ) [1..u]
+  where (l,u) = bitArrayBounds mask
 
 applyMask mask = map fixAtom 
   where fixAtom i | lookupBit mask i    = i
                   | lookupBit mask (-i) = -i
                   | otherwise           = i
 
-unionMask ba1 ba2 = 
-    if bitArrayBounds ba1 /= bitArrayBounds ba2
-    then error "unionMask: incompatible BitArray bounds"
-    else bitArray (l,u)
-        [ (i, True)
-        | i <- [l..u]
-        , lookupBit ba1 i || lookupBit ba2 i
-        ]
-  where (l,u) = bitArrayBounds ba1
+unionsMask [] = error "Cannot union no masks"
+unionsMask ms@(m1:_) =  bitArray (l,u) [ (i, True) | i <- [l..u] , any (`lookupBit` i) ms ]
+  where (l,u) = bitArrayBounds m1
