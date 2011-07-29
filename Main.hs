@@ -7,6 +7,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as L
+import qualified Data.Strict as ST
 import Control.Monad
 import System.IO
 import System.Console.GetOpt
@@ -52,11 +53,16 @@ openH filename = do
         hPutStrLn stderr $ "Error: Couldn't open " ++ filename ++ " for writing:\n" ++ show e
         exitFailure
 
-parseSrc :: String -> IO Source
-parseSrc s = case BS.split '_' (BS.pack s) of
-    [pkg,version,x] | x == "src" -> return $ Source (SourceName pkg) (DebianVersion version)
-    _ -> do hPutStrLn stderr $ "Error: Could not parse source package name \"" ++ s ++ "\", "++
-                               "expecting format name_version_src"
+parseAtom :: String -> IO Atom
+parseAtom s = case BS.split '_' (BS.pack s) of
+    [pkg,version,arch] | arch == "src" ->
+        return $ SrcAtom $ Source (SourceName pkg) (DebianVersion version)
+                       | arch == "all" ->
+        return $ BinAtom $ Binary (BinName pkg) (DebianVersion version) ST.Nothing
+                       | otherwise ->
+        return $ BinAtom $ Binary (BinName pkg) (DebianVersion version) (ST.Just (Arch arch))
+    _ -> do hPutStrLn stderr $ "Error: Could not parse package name \"" ++ s ++ "\", "++
+                               "expecting format name_version_arch, where arch can be src."
             exitFailure
 
 toArchList = map Arch . filter (not . BS.null) . BS.splitWith (\c -> c `elem` ", ") . BS.pack
@@ -90,7 +96,7 @@ opts =
       (ReqArg (\d config -> openH d >>= \h -> return (config { hintsH = h })) "FILE")
       "print britney2 hints to this file"
     , Option "" ["migrate"]
-      (ReqArg (\ss config -> parseSrc ss >>= \s -> return (config { migrateThis = Just s })) "SRC")
+      (ReqArg (\ss config -> parseAtom ss >>= \s -> return (config { migrateThis = Just s })) "SRC")
       "find a migration containing this src and ignoring this package's age"
     , Option "" ["large"]
       (NoArg (\config -> return (config { transSize = AsLargeAsPossible })))
@@ -126,9 +132,9 @@ runBritney config = do
 
     config <- case migrateThis config of
         Nothing -> return config
-        Just src -> case ai `indexSrc` src of 
-            Nothing -> hPutStrLn stderr ("Source " ++ show src ++ " not known") >> exitFailure
-            Just si -> return $ config { migrateThisI = Just si }
+        Just atom -> case ai `indexAtom` atom of 
+            Nothing -> hPutStrLn stderr ("Package " ++ show atom ++ " not known") >> exitFailure
+            Just i -> return $ config { migrateThisI = Just i }
 
     general <- parseGeneralInfo config ai
 
@@ -152,7 +158,7 @@ runBritney config = do
 
 
     let (rules, relaxable, desired, unwanted) = transitionRules config ai unstable testing general
-        extraRules = maybe [] (\si -> [OneOf [genIndex si] "becuase it was requested"]) (migrateThisI config)
+        extraRules = maybe [] (\si -> [OneOf [si] "becuase it was requested"]) (migrateThisI config)
         cleanedRules = extraRules ++ rules ++ (relaxable `removeRelated` removeClause)
         cnf = clauses2CNF cleanedRules
 

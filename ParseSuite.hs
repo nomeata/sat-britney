@@ -197,7 +197,10 @@ parseGeneralInfo config ai = do
 
     -- Now the Dates file (may not exist)
     hPutStrLn stderr "Reading and parsing dates file"
-    ages <- maybe id (M.delete) (migrateThisI config) <$>
+    -- If a package has been given at the command line, and it happens to be the index
+    -- of a source package, we remove it. Removing the index of something that
+    -- is not a source pacackge is a noop.
+    ages <- maybe id (M.delete . (\(Index i) -> Index i)) (migrateThisI config) <$>
         parseAgeFile (dir config </> "testing" </> "Dates") ai
     ages `deepseq` return ()
 

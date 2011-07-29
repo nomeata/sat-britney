@@ -156,6 +156,8 @@ indexSrc :: AtomIndex -> Source -> Maybe SrcI
 indexSrc (m,_,_) s = Index <$> SrcAtom s `M.lookup` m
 indexBug :: AtomIndex -> Bug -> Maybe BugI
 indexBug (m,_,_) b = Index <$> BugAtom b `M.lookup` m
+indexAtom :: AtomIndex -> Atom -> Maybe AtomI
+indexAtom (m,_,_) a = Index <$> a `M.lookup` m
 
 addBin :: AtomIndex -> Binary -> (AtomIndex, BinI)
 addBin a2i@(m,m',c) b = case indexBin a2i b of
@@ -220,8 +222,8 @@ data Config = Config
     , differenceH :: Maybe Handle
     , hintsH :: Maybe Handle
 
-    , migrateThis :: Maybe Source
-    , migrateThisI :: Maybe SrcI
+    , migrateThis :: Maybe Atom
+    , migrateThisI :: Maybe AtomI
     }
 
 mbDo Nothing _ = return ()
