@@ -1,0 +1,40 @@
+Name:                SAT-Britney
+Version:             0.1
+Synopsis:            SAT-solver based Debian testing migration tool
+Homepage:            nomeata@debian.org
+License:             GPL-2
+License-file:        LICENSE.txt
+Author:              Joachim Breitner
+Maintainer:          nomeata@debian.org
+Category:            System
+Build-type:          Simple
+Cabal-version:       >=1.6
+
+Executable SAT-Britney
+  Main-is: Main.hs
+
+  ghc-options: -rtsopts -with-rtsopts -K83886080
+
+  ld-options: -static -pthread
+
+  Build-Depends: base ==4.*
+        , containers
+        , array
+        , directory
+        , bytestring
+        , process
+        , pretty
+        , time
+        , parsec >= 3.1
+        , filepath
+        , Cabal
+
+        , unix
+        , bytestring-nums
+        , strict
+        , deepseq
+        , bitarray
+        , unordered-containers
+
+  Pkgconfig-Depends: 
+        libdpkg

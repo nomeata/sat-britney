@@ -1,3 +1,8 @@
+-- |
+-- Module: PrettyPrint
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module PrettyPrint where
 
 import Text.PrettyPrint

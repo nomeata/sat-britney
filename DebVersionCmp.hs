@@ -1,4 +1,9 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE ForeignFunctionInterface, EmptyDataDecls #-}
+-- |
+-- Module: DebVersionCmp
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module DebVersionCmp where
 
 import System.IO.Unsafe

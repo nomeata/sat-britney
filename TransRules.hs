@@ -1,3 +1,8 @@
+-- |
+-- Module: TransRules
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module TransRules where
 
 import Data.List

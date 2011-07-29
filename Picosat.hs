@@ -1,4 +1,9 @@
 {-# LANGUAGE OverloadedStrings, TupleSections #-}
+-- |
+-- Module: Picosat
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module Picosat
     ( Conj
     , CNF

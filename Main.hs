@@ -1,5 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- |
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
+
 import System.Environment
 import System.FilePath
 import Text.PrettyPrint
@@ -14,13 +19,6 @@ import System.Console.GetOpt
 import System.Exit
 import Data.Functor
 import Data.Maybe
-
-import Debian.Control
-import Debian.Control.ByteString
-import Debian.Relation
-import Debian.Relation.ByteString
-import Debian.Version
-import Debian.Version.ByteString
 
 import ParseSuite
 import TransRules

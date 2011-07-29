@@ -1,3 +1,7 @@
+-- |
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 import qualified Data.Map as M
 import Types
 import Data.List

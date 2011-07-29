@@ -1,5 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- |
+-- Module: ControlParser
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module ControlParser where
 
 import Data.Word

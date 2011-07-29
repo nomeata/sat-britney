@@ -1,4 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- |
+-- Module: Hints
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module Hints where
 
 import qualified Data.Map as M

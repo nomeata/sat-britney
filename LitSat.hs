@@ -1,3 +1,8 @@
+-- |
+-- Module: ClauseSat
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module LitSat where
 
 data Clause a 

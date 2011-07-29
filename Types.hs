@@ -1,8 +1,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
+-- |
+-- Module: Types
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module Types where
-
-import Debian.Version.ByteString (parseDebianVersion)
 
 import System.IO
 

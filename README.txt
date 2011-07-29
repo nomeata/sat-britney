@@ -1,9 +1,9 @@
 SAT-Britney
 ~~~~~~~~~~
 
-© 2011 Joachim Breitner
+© 2011 Joachim Breitner <nomeata@debian.org>
 
-This package is distributed under the BSD-3 license, see LICENSE.txt for
+This package is distributed under the GPL version 2, see LICENSE.txt for
 details.
 
 
@@ -19,7 +19,7 @@ determine the migrations.
 Usage
 ~~~~~
 
-For details on the flags, please consult sat-britney --help output. You need to
+For details on the flags, please consult SAT-Britney --help output. You need to
 enable at lest one of the various outputs (e.g. --hints), otherwise you are
 burning CPU cycles for nothing.
 
@@ -47,12 +47,21 @@ If you see the error message
 then try setting GCONV_PATH=/usr/lib64/gconv; such errors occur due to static
 linking of the binary.
 
+Supported SAT-Solvers
+~~~~~~~~~~~~~~~~~~~~~
+
+For SAT problems, picosat is always used. For the PMAX-SAT problems, it can
+interfaces with msuncore, MiniMaxSat and clasp, of which only the latter is
+Free Software. The selection is done in the file Picosat.hs.
+
 
 Hacking
 ~~~~~~~
 
 SAT-Britney is written in Haskell and developed on Debian unstable. To deploy
 it, just copy the statically linked binary onto the machine you want to use it.
+The sources can be obtained using
+        darcs get http://darcs.nomeata.de/sat-britney/
 
 
 Deficiencies, Bugs and TODOs

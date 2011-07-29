@@ -1,4 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- |
+-- Module: ParseSuite
+-- Copyright: (c) 2011 Joachim Breitner
+-- License: GPL-2
+--
 module ParseSuite where
 
 import System.FilePath
