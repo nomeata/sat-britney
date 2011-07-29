@@ -327,6 +327,6 @@ applyMask mask = map fixAtom
                   | lookupBit mask (-i) = -i
                   | otherwise           = i
 
-unionsMask [] = error "Cannot union no masks"
+unionsMask [] = error "Cannot union empty set of masks"
 unionsMask ms@(m1:_) =  bitArray (l,u) [ (i, True) | i <- [l..u] , any (`lookupBit` i) ms ]
   where (l,u) = bitArrayBounds m1
