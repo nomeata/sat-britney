@@ -228,7 +228,7 @@ runPicosatPMINMAX desired cnf = do
         desiredS    = IS.fromList desired
         step []     = return []
         step (x:xs) = do
-            hPutStrLn stderr $ show (length xs + 1) ++ " clauses left while finding a small solution..."
+            hPutStrLn stderr $ show (length xs + 1) ++ " clauses left while finding next small solution..."
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
                               (applyMask known) <$>
                 runPicosatPMAX (map negate desired) (first (atom2Conj x :) cnf')
