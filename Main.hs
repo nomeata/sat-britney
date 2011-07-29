@@ -73,10 +73,10 @@ opts =
       "directory containing britney data"
     , Option "a" ["arches"]
       (ReqArg (\as config -> return (config { arches = toArchList as })) "ARCH,..")
-      "comma-separated list of arches to consider at all. Defaults to all"
+      "comma-separated list of arches to consider at all.\nDefaults to all"
     , Option "r" ["release-arches"]
       (ReqArg (\as config -> return (config { releaseArches = toArchList as })) "ARCH,...")
-      "comma-separated list of arches to consider release critical. Defaults to all"
+      "comma-separated list of arches to consider release critical.\nDefaults to all"
     , Option "" ["relaxation"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { relaxationH = h })) "FILE")
       "print relaxation clauses to this file"
@@ -96,17 +96,17 @@ opts =
       (ReqArg (\d config -> openH d >>= \h -> return (config { hintsH = h })) "FILE")
       "print britney2 hints to this file"
     , Option "" ["migrate"]
-      (ReqArg (\ss config -> parseAtom ss >>= \s -> return (config { migrateThis = Just s })) "SRC")
-      "find a migration containing this src and ignoring this package's age"
+      (ReqArg (\ss config -> parseAtom ss >>= \s -> return (config { migrateThis = Just s })) "PKG")
+      "find a migration containing this package.\nIf it is a source package, it ignores this package's age"
     , Option "" ["large"]
       (NoArg (\config -> return (config { transSize = AsLargeAsPossible })))
       "find a transition as large as possible (default)"
     , Option "" ["small"]
       (NoArg (\config -> return (config { transSize = AsSmallAsPossible })))
-      "find a transition as small as possible"
+      "find a transition as small as possible (useful with --migrate)"
     , Option "" ["many-small"]
       (NoArg (\config -> return (config { transSize = ManySmall })))
-      "find a large transition and split it into many small transitions when printing hints"
+      "find a large transition and split it into many small\ntransitions when printing hints"
     , Option "" ["any-size"]
       (NoArg (\config -> return (config { transSize = AnySize })))
       "find any transition (slightly faster)"
