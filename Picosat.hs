@@ -43,6 +43,9 @@ type CNF = ([Conj], Int)
 -- Also, remember largest variable
 type Conj = [Int]
 
+-- Known to have rage (-maxVar,maxVar)
+type AssignmentMask = BitArray
+
 atoms2Conj :: [Int] -> Conj
 atoms2Conj = sortBy (compare `on` abs)
 
@@ -205,14 +208,15 @@ runPicosatPMINMAX desired cnf = do
     case ret of 
         Left mus -> return (Left mus)
         Right maxSol -> do
-            let maxSol' = fixSol maxSol
+            let maxSol' = applyMask known maxSol
             Right . (maxSol',) <$> step (filter (`IS.member` desiredS) maxSol')
-  where (cnf', _, fixSol) = simplifyCNF cnf ([], snd cnf)
+  where (cnf', _, known) = simplifyCNF cnf ([], snd cnf)
         desiredS    = IS.fromList desired
         step []     = return []
         step (x:xs) = do
             hPutStrLn stderr $ show (length xs + 1) ++ " clauses left while finding a small solution..."
-            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") fixSol <$>
+            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
+                              (applyMask known) <$>
                 runPicosatPMAX (map negate desired) (first (atom2Conj x :) cnf')
             let aMinSolS = IS.fromList aMinSol
                 todo = filter (`IS.notMember` aMinSolS) xs
@@ -230,8 +234,8 @@ partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver cnf desired = do
     -- hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
-    fmap fixSol <$> runMSUnCore cnf' desired'
-  where (cnf',desired', fixSol) = simplifyCNF cnf desired
+    fmap (applyMask known) <$> runMSUnCore cnf' desired'
+  where (cnf',desired', known) = simplifyCNF cnf desired
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
@@ -282,26 +286,36 @@ runAPMAXSolver cmd cnf desired =
 -- fixed by a top level clause), removing variables from clauses or clauses
 -- that are known.
 -- TODO: Detect a conflict in the constant variables.
-simplifyCNF :: CNF -> CNF -> (CNF, CNF, [Int] -> [Int])
+
+simplifyCNF :: CNF -> CNF -> (CNF, CNF, AssignmentMask)
 simplifyCNF (hard,maxVar) (soft,_) = case singletons of
-            [] -> ((hard,maxVar), (soft,maxVar), id)
-            _ -> (\(h,s,f) -> (h,s,map fixAtom . f)) $ simplifyCNF (hard',maxVar) (soft',maxVar)
+            [] -> ((hard,maxVar), (soft,maxVar), emptyMask)
+            _  -> (\(h,s,f) -> (h,s,knownAtomsA `unionMask` f)) $
+                  simplifyCNF (hard',maxVar) (soft',maxVar)
   where (singletons, others) = partitionEithers $ 
             map(\l -> case l of [s] -> Left s ; _ -> Right l ) hard
-        (trueAtoms,falseAtoms) = partition (>0) singletons
-        trueAtomsA  = bitArray (1,maxVar) [ (i, True) | i <- trueAtoms]
-        falseAtomsA = bitArray (1,maxVar) [ (-i, True) | i <- falseAtoms]
-        surelyTrueAtom i = if i > 0 then lookupBit trueAtomsA    i
-                                    else lookupBit falseAtomsA (-i)
+        knownAtomsA = bitArray (-maxVar, maxVar) [ (i, True) | i <- singletons] 
+        surelyTrueAtom i = lookupBit knownAtomsA i
         surelyTrueConjs = any surelyTrueAtom
-        known i =  lookupBit trueAtomsA a || lookupBit falseAtomsA a
-            where a = abs i
-        hard' = map (filter (not . known)) .
+        knownFalse i = lookupBit knownAtomsA (-i)
+        hard' = map (filter (not . knownFalse)) .
                 filter (not . surelyTrueConjs) $ others 
         soft' = filter (not . null) .
-                map (filter (not . known)) .
+                map (filter (not . knownFalse)) .
                 filter (not . surelyTrueConjs) $ soft 
-        fixAtom i | lookupBit trueAtomsA a  = a
-                  | lookupBit falseAtomsA a = -a 
-                  | otherwise               = i
-          where a = abs i
+        emptyMask = bitArray (-maxVar, maxVar) []
+
+applyMask mask = map fixAtom 
+  where fixAtom i | lookupBit mask i    = i
+                  | lookupBit mask (-i) = -i
+                  | otherwise           = i
+
+unionMask ba1 ba2 = 
+    if bitArrayBounds ba1 /= bitArrayBounds ba2
+    then error "unionMask: incompatible BitArray bounds"
+    else bitArray (l,u)
+        [ (i, True)
+        | i <- [l..u]
+        , lookupBit ba1 i || lookupBit ba2 i
+        ]
+  where (l,u) = bitArrayBounds ba1
