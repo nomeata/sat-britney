@@ -136,9 +136,12 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai
 
-    let (rulesT, relaxableT, _, _) = transitionRules config ai testing testing general
+    let (rules, relaxable, desired, unwanted) = transitionRules config ai unstable testing general
+        rulesT = map (\i -> Not i "we are investigating testing") desired ++
+                 map (\i -> OneOf [i] "we are investigating testing") unwanted ++
+                 rules
         cnfT = clauses2CNF rulesT
-        relaxableClauses = clauses2CNF relaxableT
+        relaxableClauses = clauses2CNF relaxable
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
     removeClauseE <- runRelaxer (maxIndex ai) relaxableClauses cnfT
@@ -155,8 +158,7 @@ runBritney config = do
             return removeClause
 
 
-    let (rules, relaxable, desired, unwanted) = transitionRules config ai unstable testing general
-        extraRules = maybe [] (\si -> [OneOf [si] "becuase it was requested"]) (migrateThisI config)
+    let extraRules = maybe [] (\si -> [OneOf [si] "becuase it was requested"]) (migrateThisI config)
         cleanedRules = extraRules ++ rules ++ (relaxable `removeRelated` removeClause)
         cnf = clauses2CNF cleanedRules
 

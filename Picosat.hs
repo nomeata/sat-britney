@@ -249,7 +249,7 @@ runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver cnf desired = do
     -- hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
     case simplifyCNF cnf desired of
-        Just (cnf',desired', known) -> fmap (applyMask known) <$> runMSUnCore cnf' desired'
+        Just (cnf',desired', known) -> fmap (applyMask known) <$> runClasp cnf' desired'
         Nothing -> return Nothing
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
