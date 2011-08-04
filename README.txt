@@ -60,8 +60,8 @@ Hacking
 
 SAT-Britney is written in Haskell and developed on Debian unstable. To deploy
 it, just copy the statically linked binary onto the machine you want to use it.
-The sources can be obtained using
-        darcs get http://darcs.nomeata.de/sat-britney/
+The sources can be obtained from git://git.nomeata.de/sat-britney.git and
+viewed at http://git.nomeata.de/?p=sat-britney.git
 
 
 Deficiencies, Bugs and TODOs
