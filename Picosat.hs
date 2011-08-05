@@ -240,8 +240,8 @@ runPicosatPMINMAX desired cnf = do
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
-  where array = listBitArray (1,maxVar) $ map (>0) vars
---        array = bitArray (0,maxVar) [ (abs i, i > 0) | i <- vars]
+  where --array = listBitArray (1,maxVar) $ map (>0) vars
+        array = bitArray (1,maxVar) [ (i, True) | i <- vars, i > 0]
         check = any (\i -> (i > 0) == lookupBit array (abs i))
 
 
