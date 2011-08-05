@@ -268,9 +268,9 @@ parseRel str' = DepRel (BinName pkg) verReq archReq
                           | otherwise            = (Nothing, rest2)
 
 parseVerReq :: BS.ByteString -> VersionReq
-parseVerReq str = case BS.words str of
-    [rel, ver] -> parseVerReqRel rel (DebianVersion ver)
-    [] -> error $ "Cannot parse Version requirement " ++ show str
+parseVerReq str =
+    let (rel, ver) = BS.span (`elem` "<=>") str
+    in  parseVerReqRel rel (DebianVersion (BS.dropWhile isSpace ver))
 
 parseVerReqRel :: BS.ByteString -> DebianVersion -> VersionReq
 parseVerReqRel str v =
