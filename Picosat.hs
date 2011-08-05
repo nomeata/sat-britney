@@ -249,14 +249,17 @@ runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
 runPMAXSolver cnf desired = do
     -- hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
     case simplifyCNF cnf desired of
-        Just (cnf',desired', known) -> fmap (applyMask known) <$> runClasp cnf' desired'
+        Just (cnf',desired', known) -> fmap (applyMask known) <$> runSat4j cnf' desired'
         Nothing -> return Nothing
 
 runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
-runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" $ ["-v","0",filename]
+runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" ["-v","0",filename]
 
 runMiniMaxSat :: CNF -> CNF -> IO (Maybe [Int])
-runMiniMaxSat = runAPMAXSolver (\filename ->  proc "./minimaxsat" $ ["-F=2",filename])
+runMiniMaxSat = runAPMAXSolver $ \filename ->  proc "./minimaxsat" ["-F=2",filename]
+
+runSat4j :: CNF -> CNF -> IO (Maybe [Int])
+runSat4j = runAPMAXSolver $  \filename -> proc "solvers/sat4j-maxsat.jar" [filename]
 
 runClasp :: CNF -> CNF -> IO (Maybe [Int])
 runClasp = runAPMAXSolver (\filename ->  proc "clasp" $ ["--quiet=1,2",filename])
@@ -265,7 +268,7 @@ runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
 runAPMAXSolver cmd cnf desired =
     if null (fst cnf) && null (fst desired) then return (Just [1..snd cnf]) else do
     getTemporaryDirectory  >>= \tmpdir -> do
-    withTempFile tmpdir "sat-britney-.dimacs" $ \tmpfile handle -> do
+    withTempFile tmpdir "sat-britney-.wcnf" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
 
     L.hPut handle cnfString
