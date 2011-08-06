@@ -259,7 +259,7 @@ runMiniMaxSat :: CNF -> CNF -> IO (Maybe [Int])
 runMiniMaxSat = runAPMAXSolver $ \filename ->  proc "./minimaxsat" ["-F=2",filename]
 
 runSat4j :: CNF -> CNF -> IO (Maybe [Int])
-runSat4j = runAPMAXSolver $  \filename -> proc "solvers/sat4j-maxsat.jar" [filename]
+runSat4j = runAPMAXSolver $  \filename -> proc "java" ["-jar","solvers/sat4j-maxsat.jar",filename]
 
 runClasp :: CNF -> CNF -> IO (Maybe [Int])
 runClasp = runAPMAXSolver (\filename ->  proc "clasp" $ ["--quiet=1,2",filename])
