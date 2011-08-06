@@ -227,16 +227,16 @@ runPicosatPMINMAX desired cnf = do
   where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf ([], snd cnf)
         desiredS    = IS.fromList desired
         step []     = return []
-        step (x:xs) = do
-            hPutStrLn stderr $ show (length xs + 1) ++ " clauses left while finding next small solution..."
+        step todo = do
+            hPutStrLn stderr $ show (length todo) ++ " clauses left while finding next small solution..."
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
                               (applyMask known) <$>
-                runPicosatPMAX (map negate desired) (first (atom2Conj x :) cnf')
+                runPicosatPMAX (map negate desired) (first (atoms2Conj todo :) cnf')
             let aMinSolS = IS.fromList aMinSol
-                todo = filter (`IS.notMember` aMinSolS) xs
-            when (x `IS.notMember` aMinSolS) $
-                hPutStr stderr $ "Solution does not contain forced variable."
-            (aMinSol :) <$> step todo
+                todo' = filter (`IS.notMember` aMinSolS) todo
+            when (length todo == length todo') $
+                hPutStr stderr $ "Solution does not contain any variable."
+            (aMinSol :) <$> step todo'
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
