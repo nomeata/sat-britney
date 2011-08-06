@@ -22,7 +22,7 @@ generateHints ai testing unstable newAtoms =
             | srcI <- S.toList addedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ] ++ 
-            [ L.fromChunks [srcName , "/", srcVersion, "/", arch ]
+            [ L.fromChunks [srcName , "/", arch, "/", srcVersion ]
             | (srcI,Arch arch) <- S.toList binNMUedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ]
