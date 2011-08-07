@@ -9,6 +9,7 @@ import Text.PrettyPrint
 import Data.Map ((!))
 
 import Types
+import Indices
 import LitSat
 
 class PP a where pp :: AtomIndex -> a -> Doc

@@ -28,6 +28,7 @@ import Control.Arrow (first)
 
 import ControlParser
 import Types
+import Indices
 
 myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file

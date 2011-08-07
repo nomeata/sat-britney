@@ -20,6 +20,7 @@ import Data.List
 import Data.Function
 import Data.Functor
 import DebVersionCmp
+import Indices
 
 type Set = S.Set
 type Map = M.Map
@@ -134,10 +135,6 @@ type Dependency = [DepDisj]
 
 {- Atom index counter stuff -}
 
-newtype Index a = Index { unIndex :: Int }
- deriving (Eq, Ord, NFData)
-instance Show (Index a) where show (Index i ) = "I" ++ show i
-
 type Counter = Int
 
 type BinI = Index Binary
@@ -148,7 +145,7 @@ type AtomI = Index Atom
 genIndex :: Index a -> Index Atom
 genIndex (Index i) = Index i
 
-type AtomIndex = (M.Map Atom Int, M.Map Int Atom, Int)
+type AtomIndex = (M.Map Atom Int, M.Map Int Atom, Counter)
 
 maxIndex :: AtomIndex -> AtomI
 maxIndex (_,_,i) = Index (pred i)

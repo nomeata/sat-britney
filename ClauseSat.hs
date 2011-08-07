@@ -21,6 +21,7 @@ import PrettyPrint
 import LitSat
 import Picosat
 import Types
+import Indices
 
 type CNF2Clause a = HM.HashMap Conj [Clause a]
 

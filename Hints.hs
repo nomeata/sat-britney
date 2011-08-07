@@ -12,6 +12,7 @@ import qualified Data.Strict as ST
 import qualified Data.ByteString.Lazy.Char8 as L
 
 import Types
+import Indices
 
 generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> S.Set AtomI -> L.ByteString
 generateHints ai testing unstable newAtoms =
