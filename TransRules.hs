@@ -19,6 +19,7 @@ import Control.Arrow ((&&&))
 
 import Types
 import LitSat
+import qualified IndexMap as IxM
 
 transitionRules config ai unstable testing general =
     ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
@@ -51,7 +52,7 @@ transitionRules config ai unstable testing general =
             {-# SCC "dependencies" #-}
             -- Dependencies
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- M.toList dependsUnion,
+                (binI,depends) <- IxM.toList dependsUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
                 let deps = map genIndex . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
@@ -60,7 +61,7 @@ transitionRules config ai unstable testing general =
             {-# SCC "conflictClauses" #-}
             -- Conflicts
             [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- M.toList conflictsUnion,
+                (binI,depends) <- IxM.toList conflictsUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
                 rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
@@ -68,7 +69,7 @@ transitionRules config ai unstable testing general =
                 confl <- nub (resolve arch rel)
             ] ++
             [NotBoth (genIndex binI) (genIndex confl) ("the package breaks on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- M.toList breaksUnion,
+                (binI,depends) <- IxM.toList breaksUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
                 rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
@@ -79,7 +80,7 @@ transitionRules config ai unstable testing general =
             {-# SCC "releaseSync" #-}
             -- release architectures ought to all migrate
             [Implies (genIndex src) [bin] ("release architectures ought to migrate completely") |
-                (src, bins) <- M.toList buildsOnlyUnstable,
+                (src, bins) <- IxM.toList buildsOnlyUnstable,
                 -- BEWARE: If more than one binary with the same name built by the same
                 -- source on the same architecture exists in unstable, this will
                 -- contradict with the unique binary package rule.
@@ -91,7 +92,7 @@ transitionRules config ai unstable testing general =
             -- architecture together. Assumes that the one-binary-package
             -- condition is fulfilled in unstable
             [AllOrNone binIs ("builds should not be separated") |
-                (src, bins) <- M.toList (builds unstable),
+                (src, bins) <- IxM.toList (builds unstable),
                 binPerArch <- groupBy ((==) `on` binArch . snd) .
                               sortBy  (compare `on` binArch . snd) .
                               map (id &&& (ai `lookupBin`)) $ bins,
@@ -108,7 +109,7 @@ transitionRules config ai unstable testing general =
             {-# SCC "tooyoung" #-}
             -- packages need to be old enough
             [Not (genIndex src) ("it is " ++ show age ++ " days old, needs " ++ show minAge) |
-                src <- M.keys buildsOnlyUnstable,
+                src <- IxM.keys buildsOnlyUnstable,
                 Just age <- [src `M.lookup` ages general],
                 let minAge = fromMaybe (defaultMinAge config) $
                              urgencies general `combine` minAges config $ src,
@@ -118,36 +119,36 @@ transitionRules config ai unstable testing general =
             {-# SCC "needsSource" #-}
             -- a package needs its source
             [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
-                (bin, src) <- M.toList builtByUnion
+                (bin, src) <- IxM.toList builtByUnion
             ]
         needsBinary =
             {-# SCC "needsBinary" #-}
             -- a source needs a binary
             [Implies (genIndex src) bins ("it were useless otherwise") |
-                (src, binIs) <- M.toList buildsUnion,
+                (src, binIs) <- IxM.toList buildsUnion,
                 let bins = map genIndex (nub binIs)
             ]
         outdated = 
             {-# SCC "outdated" #-}
             -- release architectures ought not to be out of date
             [Not (genIndex newer) ("is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
-                (binI, src) <- M.toList (builtBy unstable),
+                (binI, src) <- IxM.toList (builtBy unstable),
                 -- TODO: only release architecture here
-                newer <- newerSources unstable ! src,
+                newer <- newerSources unstable IxM.! src,
                 newer `S.notMember` sources testing
             ]
         obsolete = 
             {-# SCC "obsolete" #-}
             -- never add a source package to testing that is already superceded
             [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` s)) |
-                (src, bins) <- M.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable ! src]
+                (src, bins) <- IxM.toList buildsOnlyUnstable,
+                (s:_) <- [newerSources unstable IxM.! src]
             ]
         buggy = 
             {-# SCC "buggy1" #-}
             -- no new RC bugs
             [Implies atom [bug] ("it has this bug") |
-                (atom, bugs) <- M.toList bugsUnion,
+                (atom, bugs) <- IxM.toList bugsUnion,
                 bug <- genIndex <$> nub bugs
             ] ++
             {-# SCC "buggy2" #-}
@@ -158,11 +159,11 @@ transitionRules config ai unstable testing general =
 
         -- Some duplication wrt above code
         obsoleteSource = S.fromList [ src |
-                (src, bins) <- M.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable ! src]
+                (src, bins) <- IxM.toList buildsOnlyUnstable,
+                (s:_) <- [newerSources unstable IxM.! src]
             ]
         youngSource = S.fromList [ src |
-                src <- M.keys buildsOnlyUnstable,
+                src <- IxM.keys buildsOnlyUnstable,
                 Just age <- [src `M.lookup` ages general],
                 let minAge = fromMaybe (defaultMinAge config) $
                              urgencies general `combine` minAges config $ src,
@@ -180,27 +181,27 @@ transitionRules config ai unstable testing general =
         binariesUnion = {-# SCC "binariesUnion" #-} M.unionWith (++) (binaryNames unstable) (binaryNames testing)
         providesUnion = {-# SCC "providesUnion" #-} M.unionWith (++) (provides unstable) (provides testing)
         -- We assume that the dependency information is the same, even from different suites
-        dependsUnion = {-# SCC "dependsUnion" #-} M.union (depends unstable) (depends testing)
-        conflictsUnion = {-# SCC "conflictsUnion" #-} M.union (conflicts unstable) (conflicts testing)
-        breaksUnion = {-# SCC "breaksUnion" #-} M.union (breaks unstable) (breaks testing)
+        dependsUnion = {-# SCC "dependsUnion" #-} IxM.union (depends unstable) (depends testing)
+        conflictsUnion = {-# SCC "conflictsUnion" #-} IxM.union (conflicts unstable) (conflicts testing)
+        breaksUnion = {-# SCC "breaksUnion" #-} IxM.union (breaks unstable) (breaks testing)
 
-        builtByUnion = {-# SCC "builtByUnion" #-} M.union (builtBy unstable) (builtBy testing)
-        buildsUnion = {-# SCC "buildsUnion" #-} M.unionWith (++) (builds unstable) (builds testing)
+        builtByUnion = {-# SCC "builtByUnion" #-} IxM.union (builtBy unstable) (builtBy testing)
+        buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionWith (++) (builds unstable) (builds testing)
 
-        bugsUnion = {-# SCC "bugsUnion" #-} M.unionWith (++) (bugs unstable) (bugs testing)
+        bugsUnion = {-# SCC "bugsUnion" #-} IxM.unionWith (++) (bugs unstable) (bugs testing)
 
         -- This does not work, as bugs with tag "sid" would appear as new bugs
         -- bugsInTesting = S.fromList (concat (M.elems (bugs testing)))
         -- bugsInUnstable = {-# SCC "bugsInUnstable" #-} S.fromList (concat (M.elems (bugs unstable)))
         bugsInTesting = {-# SCC "bugsInTesting" #-} S.fromList [ bug |
             atom <- S.toList (atoms testing),
-            bug <- M.findWithDefault [] atom bugsUnion ]
+            bug <- IxM.findWithDefault [] atom bugsUnion ]
         bugsInUnstable = {-# SCC "bugsInUnstable" #-} S.fromList [ bug |
             atom <- S.toList (atoms unstable),
-            bug <- M.findWithDefault [] atom bugsUnion ]
+            bug <- IxM.findWithDefault [] atom bugsUnion ]
         forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `S.difference` bugsInTesting
 
-        buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} M.difference (builds unstable) (builds testing)
+        buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
         atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} S.difference (atoms unstable) (atoms testing)
 
         resolve :: ST.Maybe Arch -> DepRel -> [BinI]

@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 
 import Types
 import Indices
+import qualified IndexMap as IxM
 
 generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> S.Set AtomI -> L.ByteString
 generateHints ai testing unstable newAtoms =
@@ -34,7 +35,7 @@ generateHints ai testing unstable newAtoms =
         binNMUedSources = S.fromList 
             [ (srcI,arch)
             | binI <- S.toList addedBinaries
-            , let srcI = builtBy unstable M.! binI 
+            , let srcI = builtBy unstable IxM.! binI 
             , srcI `S.notMember` addedSources
             , Binary _ _ (ST.Just arch) <- [ ai `lookupBin` binI]
             ]

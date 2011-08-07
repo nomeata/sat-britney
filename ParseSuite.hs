@@ -29,6 +29,7 @@ import Control.Arrow (first)
 import ControlParser
 import Types
 import Indices
+import qualified IndexMap as IxM
 
 myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
@@ -96,15 +97,15 @@ parseSuite config ai dir = do
                 (ai'', srcI) = addSrc ai' sourceAtom
 
     hPutStrLn stderr $ "Calculating builtBy"
-    let builtBy = {-# SCC "builtBy" #-} M.fromList builtByList
+    let builtBy = {-# SCC "builtBy" #-} IxM.fromList builtByList
     builtBy `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating builds"
-    let builds = {-# SCC "builds" #-}  M.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
+    let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
     builds `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating depends"
-    let depends = {-# SCC "depends" #-} M.fromList binaryDepends
+    let depends = {-# SCC "depends" #-} IxM.fromList binaryDepends
     depends `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating provides"
@@ -112,11 +113,11 @@ parseSuite config ai dir = do
     provides `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating conflicts"
-    let conflicts = {-# SCC "conflicts" #-} M.fromList binaryConflicts
+    let conflicts = {-# SCC "conflicts" #-} IxM.fromList binaryConflicts
     conflicts `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating breaks"
-    let breaks = {-# SCC "breaks" #-} M.fromList binaryBreaks
+    let breaks = {-# SCC "breaks" #-} IxM.fromList binaryBreaks
     breaks `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating binaryNames"
@@ -126,7 +127,7 @@ parseSuite config ai dir = do
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
     hPutStrLn stderr $ "Calculating sourceAtoms"
-    let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (M.keys builds)
+    let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (IxM.keys builds)
     sourceAtoms `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating sourceNames"
@@ -136,7 +137,7 @@ parseSuite config ai dir = do
     sourceNames `deepseq` return ()
 
     hPutStrLn stderr $ "Calculating newerSources"
-    let newerSources = {-# SCC "newerSource" #-} M.fromListWith (++) [ (source, newer) |
+    let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) [ (source, newer) |
             srcIs <- M.elems sourceNames, 
             let sources = [ (v, srcI) | srcI <- srcIs , let Source _ v  = ai' `lookupSrc` srcI ],
             let sorted = map snd $ sortBy (cmpDebianVersion `on` fst) sources,
@@ -306,8 +307,8 @@ pPkgName = do skipMany (char ',' <|> whiteChar)
 
 whiteChar = oneOf [' ','\t','\n']
 
-set2MapNonEmpty :: (a -> [b]) -> S.Set a -> M.Map a [b]
-set2MapNonEmpty f s = M.fromDistinctAscList [ (k, v) | k <- S.toAscList s, let v = f k, not (null v) ]
+set2MapNonEmpty :: (Index a -> [b]) -> S.Set (Index a) -> IxM.Map a [b]
+set2MapNonEmpty f s = IxM.fromDistinctAscList [ (k, v) | k <- S.toAscList s, let v = f k, not (null v) ]
 
-set2Map :: (a -> b) -> S.Set a -> M.Map a b
-set2Map f s = M.fromDistinctAscList [ (k, f k) | k <- S.toAscList s ]
+set2Map :: (Index a -> b) -> S.Set (Index a) -> IxM.Map a b
+set2Map f s = IxM.fromDistinctAscList [ (k, f k) | k <- S.toAscList s ]

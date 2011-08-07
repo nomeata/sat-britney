@@ -21,6 +21,7 @@ import Data.Function
 import Data.Functor
 import DebVersionCmp
 import Indices
+import qualified IndexMap as IxM
 
 type Set = S.Set
 type Map = M.Map
@@ -190,14 +191,14 @@ data SuiteInfo = SuiteInfo {
     atoms :: S.Set AtomI,
     sourceNames :: Map SourceName [SrcI],
     binaryNames :: Map (BinName, Arch) [BinI],
-    builds :: Map SrcI [BinI],
-    builtBy :: Map BinI SrcI,
-    depends :: Map BinI Dependency,
+    builds :: IxM.Map Source [BinI],
+    builtBy :: IxM.Map Binary SrcI,
+    depends :: IxM.Map Binary Dependency,
     provides :: Map (BinName, Arch) [BinI],
-    conflicts :: Map BinI Dependency,
-    breaks :: Map BinI Dependency,
-    newerSources :: Map SrcI [SrcI],
-    bugs :: Map AtomI [BugI]
+    conflicts :: IxM.Map Binary Dependency,
+    breaks :: IxM.Map Binary Dependency,
+    newerSources :: IxM.Map Source [SrcI],
+    bugs :: IxM.Map Atom [BugI]
     }
 
 data GeneralInfo = GeneralInfo {
