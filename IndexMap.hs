@@ -6,10 +6,10 @@ import Control.Arrow
 import Data.Functor
 import Control.DeepSeq
 
-import qualified Data.Map as M
+import qualified Data.IntMap as M
 import Indices
 
-newtype Map a b = IndexMap { unIndexMap :: M.Map Int b }
+newtype Map a b = IndexMap { unIndexMap :: M.IntMap b }
   deriving (NFData)
 
 (IndexMap m) ! (Index i) = m M.! i
