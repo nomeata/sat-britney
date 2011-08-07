@@ -25,6 +25,9 @@ type Set = S.Set
 type Map = M.Map
 
 instance NFData BS.ByteString 
+instance NFData a => NFData (ST.Maybe a) where
+    rnf (ST.Just x) = rnf x
+    rnf ST.Nothing = ()
 
 newtype DebianVersion = DebianVersion { unDebianVersion :: ByteString }
     deriving (Ord, Eq)
@@ -119,7 +122,7 @@ instance NFData ArchitectureReq where
     rnf (ArchOnly as) = as `deepseq` ()
     rnf (ArchExcept as) = as `deepseq` ()
 
-data DepRel = DepRel !BinName !(Maybe VersionReq) !(Maybe ArchitectureReq)
+data DepRel = DepRel !BinName !(ST.Maybe VersionReq) !(ST.Maybe ArchitectureReq)
 		deriving (Show, Eq)
 
 instance NFData DepRel where

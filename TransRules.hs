@@ -63,7 +63,7 @@ transitionRules config ai unstable testing general =
                 (binI,depends) <- M.toList conflictsUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
-                rel@(DepRel _ (Just vr) _ ) <- disjunction,
+                rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
                 hasUpperBound vr,
                 confl <- nub (resolve arch rel)
             ] ++
@@ -71,7 +71,7 @@ transitionRules config ai unstable testing general =
                 (binI,depends) <- M.toList breaksUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
-                rel@(DepRel _ (Just vr) _ ) <- disjunction,
+                rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
                 -- hasUpperBound vr,
                 confl <- nub (resolve arch rel)
             ]
@@ -211,29 +211,29 @@ transitionRules config ai unstable testing general =
                     let Binary pkg version _ = ai `lookupBin` binI,
                     checkVersionReq mbVerReq (Just version)
                 ] ++ 
-                if isJust mbVerReq then [] else 
+                if ST.isJust mbVerReq then [] else 
                 [ binI |
                     binI <- M.findWithDefault [] (name, arch) providesUnion
                 ]
             | otherwise = []
           where arch = ST.fromMaybe (archForAll config) mbArch 
-                checkArchReq Nothing = True
-                checkArchReq (Just (ArchOnly arches)) = arch `elem` arches
-                checkArchReq (Just (ArchExcept arches)) = arch `notElem` arches
+                checkArchReq ST.Nothing = True
+                checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
+                checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
 
 -- |Check if a version number satisfies a version requirement.
-checkVersionReq :: Maybe VersionReq -> Maybe DebianVersion -> Bool
-checkVersionReq Nothing _ = True
+checkVersionReq :: ST.Maybe VersionReq -> Maybe DebianVersion -> Bool
+checkVersionReq ST.Nothing _ = True
 checkVersionReq _ Nothing = False
-checkVersionReq (Just (SLT v1)) (Just v2) =
+checkVersionReq (ST.Just (SLT v1)) (Just v2) =
     v2 `cmpDebianVersion` v1 == LT
-checkVersionReq (Just (LTE v1)) (Just v2) =
+checkVersionReq (ST.Just (LTE v1)) (Just v2) =
     v2 `cmpDebianVersion` v1 <= EQ
-checkVersionReq (Just (EEQ v1)) (Just v2) =
+checkVersionReq (ST.Just (EEQ v1)) (Just v2) =
     v2 `cmpDebianVersion` v1 == EQ
-checkVersionReq (Just (GRE v1)) (Just v2) =
+checkVersionReq (ST.Just (GRE v1)) (Just v2) =
     v2 `cmpDebianVersion` v1 >= EQ
-checkVersionReq (Just (SGR v1)) (Just v2) =
+checkVersionReq (ST.Just (SGR v1)) (Just v2) =
     v2 `cmpDebianVersion` v1 == GT
 
     

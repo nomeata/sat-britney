@@ -249,23 +249,24 @@ parseDependency :: BS.ByteString -> Dependency
 parseDependency str = parseDisj <$> BS.split ',' (BS.dropWhile isSpace str)
 
 parseDisj :: BS.ByteString -> DepDisj
-parseDisj str' = (parseRel <$> BS.split '|' str, str)
-  where str = BS.dropWhile isSpace str'
+parseDisj str' = rel `seq` str `seq` (rel,str)
+  where rel = parseRel <$> BS.split '|' str
+        str = BS.dropWhile isSpace str'
 
 parseRel :: BS.ByteString -> DepRel
 parseRel str' = DepRel (BinName pkg) verReq archReq
   where str = BS.dropWhile isSpace str'
         (pkg, rest1') = BS.break isSpace str
         rest1 = BS.dropWhile isSpace rest1'
-        (verReq, rest2')  | BS.null rest1        = (Nothing, rest1)
-                          | BS.head rest1 == '(' = first (Just . parseVerReq) $
+        (verReq, rest2')  | BS.null rest1        = (ST.Nothing, rest1)
+                          | BS.head rest1 == '(' = first (ST.Just . parseVerReq) $
                                                    BS.break (==')') (BS.tail rest1)
-                          | otherwise            = (Nothing, rest1)
+                          | otherwise            = (ST.Nothing, rest1)
         rest2 = BS.dropWhile isSpace . BS.dropWhile (==')') $ rest2'
-        (archReq, rest3') | BS.null rest2        = (Nothing, rest2)
-                          | BS.head rest2 == '[' = first (Just . parseArchReq) $
+        (archReq, rest3') | BS.null rest2        = (ST.Nothing, rest2)
+                          | BS.head rest2 == '[' = first (ST.Just . parseArchReq) $
                                                    BS.break (==']') (BS.tail rest2)
-                          | otherwise            = (Nothing, rest2)
+                          | otherwise            = (ST.Nothing, rest2)
 
 parseVerReq :: BS.ByteString -> VersionReq
 parseVerReq str =
@@ -283,7 +284,7 @@ parseVerReqRel str v =
       
 parseArchReq :: BS.ByteString -> ArchitectureReq
 parseArchReq str | BS.null str = error "Empty Architecture requirement"
-parseArchReq str = t arches
+parseArchReq str = arches `deepseq` t arches
  where t = if BS.head str == '!' then ArchExcept else ArchOnly
        arches = fmap Arch $
                 filter (not . BS.null) $
