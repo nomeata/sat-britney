@@ -37,6 +37,10 @@ import Debug.Trace
 import Control.Monad
 import Data.BitArray
 import Control.Exception.Base (try)
+import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector.Algorithms.Insertion as Insertion
+import Control.Monad.ST
+import Data.Hashable
 
 import qualified Data.IntSet as IS
 import qualified Data.Map as M
@@ -46,22 +50,26 @@ import Data.Map ((!))
 type CNF = ([Conj], Int)
 -- Conj is in DIMACS format, e.g. list of digits, followed by "0\n"
 -- Also, remember largest variable
-type Conj = [Int]
+type Conj = U.Vector Int
 
 -- Known to have rage (-maxVar,maxVar)
 type AssignmentMask = BitArray
 
 atoms2Conj :: [Int] -> Conj
-atoms2Conj = sortBy (compare `on` abs)
+atoms2Conj list = U.create $ do
+    v <- U.unsafeThaw (U.fromList list) 
+    Insertion.sortBy (compare `on` abs) v
+    return v
 
 conj2Line :: Conj -> BS.ByteString
-conj2Line ls = BS.pack $ unwords (map show ls) ++ " 0\n"
+conj2Line ls = BS.pack $ unwords (map show (U.toList ls)) ++ " 0\n"
 
 conjs2Cnf :: Int -> [Conj] -> CNF
 conjs2Cnf m conjs = m `seq` (conjs, m)
 
 atom2Conj :: Int -> Conj
-atom2Conj i = [i]
+{-# INLINE atom2Conj #-}
+atom2Conj i = U.singleton i
 
 formatCNF :: CNF -> L.ByteString
 formatCNF (conjs,maxVar) = L.concat
@@ -242,7 +250,7 @@ partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
   where --array = listBitArray (1,maxVar) $ map (>0) vars
         array = bitArray (1,maxVar) [ (i, True) | i <- vars, i > 0]
-        check = any (\i -> (i > 0) == lookupBit array (abs i))
+        check = U.any (\i -> (i > 0) == lookupBit array (abs i))
 
 
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
@@ -309,20 +317,20 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
             [] -> if isValidMask finalMask
                   then Just ((hard,maxVar), (soft,maxVar), finalMask)
                   else Nothing
-            _  -> if any null hard'
+            _  -> if any U.null hard'
                   then Nothing
                   else go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
           where 
             (singletons, others) = partitionEithers $ 
-                map(\l -> case l of [s] -> Left s ; _ -> Right l ) hard
+                map(\l -> if U.length l == 1 then Left (U.head l) else Right l) hard
             knownAtomsA = bitArray (-maxVar, maxVar) [ (i, True) | i <- singletons] 
             surelyTrueAtom i = lookupBit knownAtomsA i
-            surelyTrueConjs = any surelyTrueAtom
+            surelyTrueConjs = U.any surelyTrueAtom
             knownFalse i = lookupBit knownAtomsA (-i)
-            hard' = map (filter (not . knownFalse)) .
+            hard' = map (U.filter (not . knownFalse)) .
                     filter (not . surelyTrueConjs) $ others 
-            soft' = filter (not . null) .
-                    map (filter (not . knownFalse)) .
+            soft' = filter (not . U.null) .
+                    map (U.filter (not . knownFalse)) .
                     filter (not . surelyTrueConjs) $ soft 
             finalMask = unionsMask ms
         emptyMask = bitArray (-maxVar, maxVar) []
@@ -338,3 +346,6 @@ applyMask mask = map fixAtom
 unionsMask [] = error "Cannot union empty set of masks"
 unionsMask ms@(m1:_) =  bitArray (l,u) [ (i, True) | i <- [l..u] , any (`lookupBit` i) ms ]
   where (l,u) = bitArrayBounds m1
+
+instance (Hashable a, U.Unbox a) => Hashable (U.Vector a) where
+  s `hashWithSalt` v = U.foldl' hashWithSalt s v
