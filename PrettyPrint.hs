@@ -6,7 +6,7 @@
 module PrettyPrint where
 
 import Text.PrettyPrint
-import Data.Map ((!))
+import Data.IntMap ((!))
 
 import Types
 import Indices

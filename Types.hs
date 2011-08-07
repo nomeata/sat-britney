@@ -16,6 +16,7 @@ import Control.DeepSeq
 
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.IntMap as IM
 import Data.List
 import Data.Function
 import Data.Functor
@@ -146,13 +147,13 @@ type AtomI = Index Atom
 genIndex :: Index a -> Index Atom
 genIndex (Index i) = Index i
 
-type AtomIndex = (M.Map Atom Int, M.Map Int Atom, Counter)
+type AtomIndex = (M.Map Atom Int, IM.IntMap Atom, Counter)
 
 maxIndex :: AtomIndex -> AtomI
 maxIndex (_,_,i) = Index (pred i)
 
 emptyIndex :: AtomIndex
-emptyIndex = (M.empty, M.empty, 1)
+emptyIndex = (M.empty, IM.empty, 1)
 
 indexBin :: AtomIndex -> Binary -> Maybe BinI
 indexBin (m,_,_) b = Index <$> BinAtom b `M.lookup` m
@@ -166,24 +167,24 @@ indexAtom (m,_,_) a = Index <$> a `M.lookup` m
 addBin :: AtomIndex -> Binary -> (AtomIndex, BinI)
 addBin a2i@(m,m',c) b = case indexBin a2i b of
                     Just i -> (a2i, i)
-                    Nothing -> (((BinAtom b `M.insert` c) m, (c `M.insert` BinAtom b) m', succ c), Index c)
+                    Nothing -> (((BinAtom b `M.insert` c) m, (c `IM.insert` BinAtom b) m', succ c), Index c)
 addSrc :: AtomIndex -> Source -> (AtomIndex, SrcI)
 addSrc a2i@(m,m',c) b = case indexSrc a2i b of
                     Just i -> (a2i, i)
-                    Nothing -> (((SrcAtom b `M.insert` c) m, (c `M.insert` SrcAtom b) m', succ c), Index c)
+                    Nothing -> (((SrcAtom b `M.insert` c) m, (c `IM.insert` SrcAtom b) m', succ c), Index c)
 addBug :: AtomIndex -> Bug -> (AtomIndex, BugI)
 addBug a2i@(m,m',c) b = case indexBug a2i b of
                     Just i -> (a2i, i)
-                    Nothing -> (((BugAtom b `M.insert` c) m, (c `M.insert` BugAtom b) m', succ c), Index c)
+                    Nothing -> (((BugAtom b `M.insert` c) m, (c `IM.insert` BugAtom b) m', succ c), Index c)
 
 lookupBin :: AtomIndex -> BinI -> Binary
-lookupBin (_,m,_) (Index i) = (\(BinAtom b) -> b) (m M.! i)
+lookupBin (_,m,_) (Index i) = (\(BinAtom b) -> b) (m IM.! i)
 lookupSrc :: AtomIndex -> SrcI -> Source
-lookupSrc (_,m,_) (Index i) = (\(SrcAtom b) -> b) (m M.! i)
+lookupSrc (_,m,_) (Index i) = (\(SrcAtom b) -> b) (m IM.! i)
 lookupBug :: AtomIndex -> BugI -> Bug
-lookupBug (_,m,_) (Index i) = (\(BugAtom b) -> b) (m M.! i)
+lookupBug (_,m,_) (Index i) = (\(BugAtom b) -> b) (m IM.! i)
 lookupAtom :: AtomIndex -> AtomI -> Atom
-lookupAtom (_,m,_) (Index i) = m M.! i
+lookupAtom (_,m,_) (Index i) = m IM.! i
 
 data SuiteInfo = SuiteInfo {
     sources :: S.Set SrcI,
