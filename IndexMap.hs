@@ -41,3 +41,10 @@ fromList l = IndexMap $ M.fromList (first unIndex <$> l)
 
 fromDistinctAscList :: [(Index a1, b)] -> Map a b
 fromDistinctAscList l = IndexMap $ M.fromDistinctAscList (first unIndex <$> l)
+
+filterWithKey :: (Index a1 -> b -> Bool) -> Map t b -> Map a b
+filterWithKey f (IndexMap m) = IndexMap $ M.filterWithKey (\k v -> f (Index k) v) m
+
+map :: (a1 -> b) -> Map t a1 -> Map a b
+map f (IndexMap m) = IndexMap $ M.map f m
+

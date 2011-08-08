@@ -21,6 +21,32 @@ import Types
 import LitSat
 import qualified IndexMap as IxM
 
+thinSuite config ai suite general = SuiteInfo
+    { sources = sources'
+    , binaries = binaries'
+    , atoms = atoms'
+    , sourceNames = M.map (filter (`S.member` sources')) $ sourceNames suite
+    , binaryNames = M.map (filter (`S.member` binaries')) $ binaryNames suite
+    , builds = IxM.filterWithKey (\k _ -> k `S.member` sources') $ builds suite
+    , builtBy = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ builtBy suite
+    , depends = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ depends suite
+    , provides = M.map (filter (`S.member` binaries')) $ provides suite
+    , conflicts = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ conflicts suite
+    , breaks = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ breaks suite
+    , newerSources = IxM.filterWithKey (\k _ -> k `S.member` sources') $
+                     IxM.map (filter (`S.member` sources')) $ newerSources suite
+    , bugs = IxM.filterWithKey (\k _ -> k `S.member` atoms') $ bugs suite
+    }
+  where sources' = S.filter (not . isTooYoung) $ sources suite
+        binaries' = S.filter ((`S.member` sources') . (builtBy suite IxM.!)) $ binaries suite
+        atoms' = S.mapMonotonic genIndex sources' `S.union` S.mapMonotonic genIndex binaries'
+
+        isTooYoung src = case src `M.lookup` ages general of
+            Just age -> let minAge = fromMaybe (defaultMinAge config) $
+                                urgencies general `combine` minAges config $ src
+                        in  age <= minAge
+            Nothing -> False
+
 transitionRules config ai unstable testing general =
     ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
     , conflictClauses ++ dependencies

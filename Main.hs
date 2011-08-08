@@ -125,7 +125,7 @@ main = do
 
 runBritney config = do
     let ai1 = emptyIndex
-    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable")
+    (unstableFull, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, ai)  <- parseSuite config ai2 (dir config </> "testing")
 
     config <- case migrateThis config of
@@ -136,7 +136,11 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai
 
-    let (rules, relaxable, desired, unwanted) = transitionRules config ai unstable testing general
+    let unstableThin = thinSuite config ai unstableFull general
+    hPutStrLn stderr $ "Thinning unstable to " ++ show (S.size (sources unstableThin)) ++
+        " sources and " ++ show (S.size (binaries unstableThin)) ++ " binaries."
+
+    let (rules, relaxable, desired, unwanted) = transitionRules config ai unstableThin testing general
         rulesT = map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
                  rules
@@ -208,7 +212,7 @@ runBritney config = do
 
             mbDo (hintsH config) $ \h -> do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints ai testing unstable thisTransitionNewAtomsIs
+                    L.hPut h $ generateHints ai testing unstableThin thisTransitionNewAtomsIs
                 hFlush h
 
     hPutStrLn stderr $ "Done"
