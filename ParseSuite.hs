@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
 -- |
 -- Module: ParseSuite
 -- Copyright: (c) 2011 Joachim Breitner
@@ -59,7 +59,7 @@ parseSuite config ai dir = do
          ,builtByList
          ,ai') = readPara ai binaries
         readPara ai [] = ([], [], [], [], [], [], [], ai)
-        readPara ai (para:ps) =
+        readPara ai (Para {..}:ps) =
                     ( binI:bins
                     , binNamesEntries ++ binNames
                     , (binI,depends):deps
@@ -69,26 +69,26 @@ parseSuite config ai dir = do
                     , (binI,srcI): bb
                     ,finalAi)
           where (bins, binNames, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
-                pkg = packageField para
-                version = DebianVersion (versionField para)
-                archS = architectureField para
+                pkg = packageField
+                version = DebianVersion versionField
+                archS = architectureField
                 (arch,onArches) = if archS == "all"
                                   then (ST.Nothing, arches config)
                                   else (ST.Just (Arch archS), [Arch archS])
                 binNamesEntries = [ ((BinName pkg,a),[binI]) | a <- onArches ]
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
-                depends = parseDependency $ dependsField para
-                conflicts = parseDependency $ conflictsField para
-                breaks = parseDependency $ breaksField para
+                depends = parseDependency $ dependsField
+                conflicts = parseDependency $ conflictsField
+                breaks = parseDependency $ breaksField
                 provides = [
                     ((BinName (BS.pack provide), providedArch), [binI]) |
-                    provide <- either (error.show) id . parseProvides $ providesField para,
+                    provide <- either (error.show) id . parseProvides $ providesField,
                     providedArch <- case arch of 
                         ST.Just arch -> [arch]
                         ST.Nothing -> arches config
                     ]
-                (source,sourceVersion) = case BS.words (sourceField para) of
+                (source,sourceVersion) = case BS.words sourceField of
                     []     -> (pkg, version)
                     [s,sv] | BS.head sv == '(' && BS.last sv == ')' 
                            -> (s, DebianVersion (BS.init (BS.tail sv)))
