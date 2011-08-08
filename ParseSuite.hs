@@ -96,62 +96,38 @@ parseSuite config ai dir = do
                 sourceAtom = Source (SourceName source) sourceVersion
                 (ai'', srcI) = addSrc ai' sourceAtom
 
-    hPutStrLn stderr $ "Calculating builtBy"
     let builtBy = {-# SCC "builtBy" #-} IxM.fromList builtByList
-    builtBy `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating builds"
     let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
-    builds `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating depends"
     let depends = {-# SCC "depends" #-} IxM.fromList binaryDepends
-    depends `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating provides"
     let provides = {-# SCC "provides" #-} M.fromList binaryProvides
-    provides `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating conflicts"
     let conflicts = {-# SCC "conflicts" #-} IxM.fromList binaryConflicts
-    conflicts `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating breaks"
     let breaks = {-# SCC "breaks" #-} IxM.fromList binaryBreaks
-    breaks `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating binaryNames"
     let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) binaryNamesList
-    binaryNames `deepseq` return ()
 
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
-    hPutStrLn stderr $ "Calculating sourceAtoms"
     let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (IxM.keys builds)
-    sourceAtoms `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating sourceNames"
     let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++)
             [ (pkg, [srcI]) | srcI <- S.toList sourceAtoms,
                               let Source pkg _  = ai' `lookupSrc` srcI ]
-    sourceNames `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating newerSources"
     let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) [ (source, newer) |
             srcIs <- M.elems sourceNames, 
             let sources = [ (v, srcI) | srcI <- srcIs , let Source _ v  = ai' `lookupSrc` srcI ],
             let sorted = map snd $ sortBy (cmpDebianVersion `on` fst) sources,
             source:newer <- tails sorted
             ]
-    newerSources `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating binaries"
     let binaries = {-# SCC "binaries" #-} S.fromList binaryAtoms
-    binaries `deepseq` return ()
 
-    hPutStrLn stderr $ "Calculating atoms"
     let atoms = {-# SCC "atoms" #-} S.mapMonotonic genIndex sourceAtoms `S.union` S.mapMonotonic genIndex binaries
-    atoms `deepseq` return ()
 
     -- Now to the bug file
     hPutStrLn stderr "Reading and parsing bugs file"
@@ -175,7 +151,6 @@ parseSuite config ai dir = do
                 let bn = unBinName bn'
                 in  M.findWithDefault [] bn rawBugs 
             ) atoms
-    bugs `deepseq` return ()
 
     hPutStrLn stderr $ "Done reading input files, " ++ show (S.size sourceAtoms) ++
                        " sources, " ++ show (S.size binaries) ++ " binaries."
@@ -200,7 +175,7 @@ parseGeneralInfo config ai = do
     -- Now the URGENCY file (may not exist)
     hPutStrLn stderr "Reading and parsing urgency file"
     urgencies <- parseUrgencyFile (dir config </> "testing" </> "Urgency") ai
-    urgencies `deepseq` return ()
+--    urgencies `deepseq` return ()
 
     -- Now the Dates file (may not exist)
     hPutStrLn stderr "Reading and parsing dates file"
@@ -209,7 +184,7 @@ parseGeneralInfo config ai = do
     -- is not a source pacackge is a noop.
     ages <- maybe id (M.delete . (\(Index i) -> Index i)) (migrateThisI config) <$>
         parseAgeFile (dir config </> "testing" </> "Dates") ai
-    ages `deepseq` return ()
+--    ages `deepseq` return ()
 
 
 
