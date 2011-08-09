@@ -162,7 +162,7 @@ runBritney config = do
             return removeClause
 
 
-    let extraRules = maybe [] (\si -> [OneOf [si] "becuase it was requested"]) (migrateThisI config)
+    let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
         cleanedRules = extraRules ++ rules ++ (relaxable `removeRelated` removeClause)
         cnf = clauses2CNF cleanedRules
 
