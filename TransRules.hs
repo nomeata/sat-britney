@@ -110,7 +110,7 @@ transitionRules config ai unstable testing general =
                 -- BEWARE: If more than one binary with the same name built by the same
                 -- source on the same architecture exists in unstable, this will
                 -- contradict with the unique binary package rule.
-                bin <- genIndex <$> bins
+                bin <- genIndex <$> nub bins
             ] 
         completeBuild = 
             {-# SCC "completeBuild" #-}
