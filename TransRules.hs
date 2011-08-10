@@ -69,7 +69,7 @@ transitionRules config ai unstable testing general =
         uniqueBin = 
             {-# SCC "uniqueBin" #-}
             -- At most one binary per name and architecture
-            [AtMostOne (nub pkgs) ("binaries ought to be unique per architecture") |
+            [AtMostOne (nub pkgs) ("at most version of " ++ show name ++ " ought to be unique on " ++ show arch) |
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
