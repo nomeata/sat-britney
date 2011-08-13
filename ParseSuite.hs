@@ -7,19 +7,15 @@
 module ParseSuite where
 
 import System.FilePath
-import System.Exit
 import Data.Functor
 import qualified Data.Map as M
-import qualified Data.Set as S
 import Text.Parsec
 import Text.Parsec.ByteString
 import Data.List
-import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Nums.Careless
 import qualified Data.Strict as ST
 import System.IO
-import System.Directory
 import Data.Time
 import Data.Char
 import Data.Function

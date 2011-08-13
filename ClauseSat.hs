@@ -4,19 +4,9 @@
 -- License: GPL-2
 --
 module ClauseSat where
-import System.IO
-import System.Posix.IO
-import System.Process
-import Data.Functor
-import Data.List
-import Data.Ord
-import Data.Function
 
-import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Map ((!))
 
-import PrettyPrint
 import LitSat
 import Picosat
 import Types

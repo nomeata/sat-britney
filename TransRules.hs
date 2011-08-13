@@ -6,15 +6,13 @@
 module TransRules where
 
 import Data.List
-import qualified Data.Map as M
-import qualified Data.Set as S
 import Data.Map ((!))
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
+import qualified Data.Map as M
 import Data.Functor
 import Data.Function
-import Data.Ord
 import Control.Arrow ((&&&))
 
 import Types

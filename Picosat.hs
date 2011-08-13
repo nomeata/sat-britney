@@ -26,25 +26,19 @@ import System.Posix.IO
 import System.Process
 import Data.Functor
 import Data.List
-import Data.Ord
 import Data.Maybe
 import Data.Function
 import Data.Either
 import System.Directory
 import Distribution.Simple.Utils (withTempFile)
 import Control.Arrow 
-import Debug.Trace
 import Control.Monad
 import Data.BitArray
-import Control.Exception.Base (try)
 import qualified Data.Vector.Unboxed as U
 import qualified Data.Vector.Algorithms.Insertion as Insertion
-import Control.Monad.ST
 
 import qualified Data.IntSet as IS
-import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Map ((!))
 
 type CNF a = ([Conj a], Int)
 -- Conj is in DIMACS format, e.g. list of digits, followed by "0\n"

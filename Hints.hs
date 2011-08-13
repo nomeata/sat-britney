@@ -6,7 +6,6 @@
 --
 module Hints where
 
-import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Strict as ST
 import qualified Data.ByteString.Lazy.Char8 as L

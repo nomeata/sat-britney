@@ -2,7 +2,6 @@
 
 module IndexSet where
 
-import Control.Arrow
 import Data.Functor
 import Control.DeepSeq
 import Unsafe.Coerce
