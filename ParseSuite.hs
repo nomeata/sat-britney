@@ -30,6 +30,7 @@ import ControlParser
 import Types
 import Indices
 import qualified IndexMap as IxM
+import qualified IndexSet as IxS
 
 myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
@@ -112,10 +113,10 @@ parseSuite config ai dir = do
 
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
-    let sourceAtoms = {-# SCC "sourceAtoms" #-} S.fromList (IxM.keys builds)
+    let sourceAtoms = {-# SCC "sourceAtoms" #-} IxS.fromList (IxM.keys builds)
 
     let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++)
-            [ (pkg, [srcI]) | srcI <- S.toList sourceAtoms,
+            [ (pkg, [srcI]) | srcI <- IxS.toList sourceAtoms,
                               let Source pkg _  = ai' `lookupSrc` srcI ]
 
     let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) [ (source, newer) |
@@ -125,9 +126,9 @@ parseSuite config ai dir = do
             source:newer <- tails sorted
             ]
 
-    let binaries = {-# SCC "binaries" #-} S.fromList binaryAtoms
+    let binaries = {-# SCC "binaries" #-} IxS.fromList binaryAtoms
 
-    let atoms = {-# SCC "atoms" #-} S.mapMonotonic genIndex sourceAtoms `S.union` S.mapMonotonic genIndex binaries
+    let atoms = {-# SCC "atoms" #-} IxS.generalize sourceAtoms `IxS.union` IxS.generalize binaries
 
     -- Now to the bug file
     hPutStrLn stderr "Reading and parsing bugs file"
@@ -152,8 +153,8 @@ parseSuite config ai dir = do
                 in  M.findWithDefault [] bn rawBugs 
             ) atoms
 
-    hPutStrLn stderr $ "Done reading input files, " ++ show (S.size sourceAtoms) ++
-                       " sources, " ++ show (S.size binaries) ++ " binaries."
+    hPutStrLn stderr $ "Done reading input files, " ++ show (IxS.size sourceAtoms) ++
+                       " sources, " ++ show (IxS.size binaries) ++ " binaries."
     return $ (SuiteInfo
         sourceAtoms
         binaries
@@ -282,8 +283,8 @@ pPkgName = do skipMany (char ',' <|> whiteChar)
 
 whiteChar = oneOf [' ','\t','\n']
 
-set2MapNonEmpty :: (Index a -> [b]) -> S.Set (Index a) -> IxM.Map a [b]
-set2MapNonEmpty f s = IxM.fromDistinctAscList [ (k, v) | k <- S.toAscList s, let v = f k, not (null v) ]
+set2MapNonEmpty :: (Index a -> [b]) -> IxS.Set a -> IxM.Map a [b]
+set2MapNonEmpty f s = IxM.fromDistinctAscList [ (k, v) | k <- IxS.toAscList s, let v = f k, not (null v) ]
 
-set2Map :: (Index a -> b) -> S.Set (Index a) -> IxM.Map a b
-set2Map f s = IxM.fromDistinctAscList [ (k, f k) | k <- S.toAscList s ]
+set2Map :: (Index a -> b) -> IxS.Set a -> IxM.Map a b
+set2Map f s = IxM.fromDistinctAscList [ (k, f k) | k <- IxS.toAscList s ]

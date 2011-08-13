@@ -19,27 +19,28 @@ import Control.Arrow ((&&&))
 
 import Types
 import LitSat
+import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
 thinSuite config ai suite general = SuiteInfo
     { sources = sources'
     , binaries = binaries'
     , atoms = atoms'
-    , sourceNames = M.map (filter (`S.member` sources')) $ sourceNames suite
-    , binaryNames = M.map (filter (`S.member` binaries')) $ binaryNames suite
-    , builds = IxM.filterWithKey (\k _ -> k `S.member` sources') $ builds suite
-    , builtBy = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ builtBy suite
-    , depends = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ depends suite
-    , provides = M.map (filter (`S.member` binaries')) $ provides suite
-    , conflicts = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ conflicts suite
-    , breaks = IxM.filterWithKey (\k _ -> k `S.member` binaries') $ breaks suite
-    , newerSources = IxM.filterWithKey (\k _ -> k `S.member` sources') $
-                     IxM.map (filter (`S.member` sources')) $ newerSources suite
-    , bugs = IxM.filterWithKey (\k _ -> k `S.member` atoms') $ bugs suite
+    , sourceNames = M.map (filter (`IxS.member` sources')) $ sourceNames suite
+    , binaryNames = M.map (filter (`IxS.member` binaries')) $ binaryNames suite
+    , builds = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $ builds suite
+    , builtBy = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ builtBy suite
+    , depends = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ depends suite
+    , provides = M.map (filter (`IxS.member` binaries')) $ provides suite
+    , conflicts = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ conflicts suite
+    , breaks = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ breaks suite
+    , newerSources = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $
+                     IxM.map (filter (`IxS.member` sources')) $ newerSources suite
+    , bugs = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') $ bugs suite
     }
-  where sources' = S.filter (not . isTooYoung) $ sources suite
-        binaries' = S.filter ((`S.member` sources') . (builtBy suite IxM.!)) $ binaries suite
-        atoms' = S.mapMonotonic genIndex sources' `S.union` S.mapMonotonic genIndex binaries'
+  where sources' = IxS.filter (not . isTooYoung) $ sources suite
+        binaries' = IxS.filter ((`IxS.member` sources') . (builtBy suite IxM.!)) $ binaries suite
+        atoms' = IxS.generalize sources' `IxS.union` IxS.generalize binaries'
 
         isTooYoung src = case src `M.lookup` ages general of
             Just age -> let minAge = fromMaybe (defaultMinAge config) $
@@ -161,7 +162,7 @@ transitionRules config ai unstable testing general =
                 (binI, src) <- IxM.toList (builtBy unstable),
                 -- TODO: only release architecture here
                 newer <- newerSources unstable IxM.! src,
-                newer `S.notMember` sources testing
+                newer `IxS.notMember` sources testing
             ]
         obsolete = 
             {-# SCC "obsolete" #-}
@@ -180,15 +181,15 @@ transitionRules config ai unstable testing general =
             {-# SCC "buggy2" #-}
             [Not atom ("it was not in testing before") |
                 
-                atom <- genIndex <$> S.toList forbiddenBugs
+                atom <- genIndex <$> IxS.toList forbiddenBugs
             ]
 
         -- Some duplication wrt above code
-        obsoleteSource = S.fromList [ src |
+        obsoleteSource = IxS.fromList [ src |
                 (src, bins) <- IxM.toList buildsOnlyUnstable,
                 (s:_) <- [newerSources unstable IxM.! src]
             ]
-        youngSource = S.fromList [ src |
+        youngSource = IxS.fromList [ src |
                 src <- IxM.keys buildsOnlyUnstable,
                 Just age <- [src `M.lookup` ages general],
                 let minAge = fromMaybe (defaultMinAge config) $
@@ -196,11 +197,11 @@ transitionRules config ai unstable testing general =
                 age <= minAge
             ]
 
-        desired  = fmap genIndex $ S.toList $
-            sources unstable `S.difference` sources testing
-                             `S.difference` obsoleteSource
-                             `S.difference` youngSource
-        unwanted = [] -- fmap genIndex $ S.toList $ sources testing `S.difference` sources unstable
+        desired  = fmap genIndex $ IxS.toList $
+            sources unstable `IxS.difference` sources testing
+                             `IxS.difference` obsoleteSource
+                             `IxS.difference` youngSource
+        unwanted = [] -- fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
 
         sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
@@ -217,18 +218,18 @@ transitionRules config ai unstable testing general =
         bugsUnion = {-# SCC "bugsUnion" #-} IxM.unionWith (++) (bugs unstable) (bugs testing)
 
         -- This does not work, as bugs with tag "sid" would appear as new bugs
-        -- bugsInTesting = S.fromList (concat (M.elems (bugs testing)))
-        -- bugsInUnstable = {-# SCC "bugsInUnstable" #-} S.fromList (concat (M.elems (bugs unstable)))
-        bugsInTesting = {-# SCC "bugsInTesting" #-} S.fromList [ bug |
-            atom <- S.toList (atoms testing),
+        -- bugsInTesting = IxS.fromList (concat (M.elems (bugs testing)))
+        -- bugsInUnstable = {-# SCC "bugsInUnstable" #-} IxS.fromList (concat (M.elems (bugs unstable)))
+        bugsInTesting = {-# SCC "bugsInTesting" #-} IxS.fromList [ bug |
+            atom <- IxS.toList (atoms testing),
             bug <- IxM.findWithDefault [] atom bugsUnion ]
-        bugsInUnstable = {-# SCC "bugsInUnstable" #-} S.fromList [ bug |
-            atom <- S.toList (atoms unstable),
+        bugsInUnstable = {-# SCC "bugsInUnstable" #-} IxS.fromList [ bug |
+            atom <- IxS.toList (atoms unstable),
             bug <- IxM.findWithDefault [] atom bugsUnion ]
-        forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `S.difference` bugsInTesting
+        forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `IxS.difference` bugsInTesting
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
-        atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} S.difference (atoms unstable) (atoms testing)
+        atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} IxS.difference (atoms unstable) (atoms testing)
 
         resolve :: ST.Maybe Arch -> DepRel -> [BinI]
         resolve mbArch (DepRel name mbVerReq mbArchReq)

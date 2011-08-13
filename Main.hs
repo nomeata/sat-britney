@@ -20,6 +20,8 @@ import System.Exit
 import Data.Functor
 import Data.Maybe
 
+import qualified IndexSet as IxS
+
 import ParseSuite
 import TransRules
 import Types
@@ -137,8 +139,8 @@ runBritney config = do
     general <- parseGeneralInfo config ai
 
     let unstableThin = thinSuite config ai unstableFull general
-    hPutStrLn stderr $ "Thinning unstable to " ++ show (S.size (sources unstableThin)) ++
-        " sources and " ++ show (S.size (binaries unstableThin)) ++ " binaries."
+    hPutStrLn stderr $ "Thinning unstable to " ++ show (IxS.size (sources unstableThin)) ++
+        " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
 
     let (rules, relaxable, desired, unwanted) = transitionRules config ai unstableThin testing general
         rulesT = map (\i -> Not i "we are investigating testing") desired ++
@@ -205,9 +207,9 @@ runBritney config = do
                 let newAtoms = S.map (ai `lookupAtom`) newAtomIs
                 let (newSource, newBinaries, _) = splitAtoms newAtoms
                 hPutStrLn h "Changes of Sources:"
-                printDifference h (S.map (ai `lookupSrc`) $ sources testing) newSource
+                printDifference h (setMap (ai `lookupSrc`) $ sources testing) newSource
                 hPutStrLn h "Changes of Package:"
-                printDifference h (S.map (ai `lookupBin`) $ binaries testing) newBinaries
+                printDifference h (setMap (ai `lookupBin`) $ binaries testing) newBinaries
                 hFlush h
 
             mbDo (hintsH config) $ \h -> do
@@ -222,6 +224,8 @@ splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
   where select (SrcAtom x) ~(l1,l2,l3) = (x:l1,l2,l3)
         select (BinAtom x) ~(l1,l2,l3) = (l1,x:l2,l3)
         select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
+
+setMap f = S.fromList . map f . IxS.toList
 
 printDifference :: (Show a, Ord a) => Handle -> S.Set a -> S.Set a -> IO ()
 printDifference h old new = do

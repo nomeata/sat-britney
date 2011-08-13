@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import Types
 import Indices
 import qualified IndexMap as IxM
+import qualified IndexSet as IxS
 
 generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> S.Set AtomI -> L.ByteString
 generateHints ai testing unstable newAtoms =
@@ -21,7 +22,7 @@ generateHints ai testing unstable newAtoms =
     (`L.append` "\n" ) . ("easy " `L.append`) . L.unwords $ hintStrings
   where hintStrings = 
             [ L.fromChunks [srcName , "/", srcVersion ]
-            | srcI <- S.toList addedSources
+            | srcI <- IxS.toList addedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ] ++ 
             [ L.fromChunks [srcName , "/", arch, "/", srcVersion ]
@@ -29,18 +30,18 @@ generateHints ai testing unstable newAtoms =
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ]
         (newSourcesIs, newBinariesIs, _) = splitAtomIs ai newAtoms
-        addedSources = newSourcesIs `S.difference` sources testing
-        addedBinaries = newBinariesIs `S.difference` binaries testing
+        addedSources = newSourcesIs `IxS.difference` sources testing
+        addedBinaries = newBinariesIs `IxS.difference` binaries testing
         
         binNMUedSources = S.fromList 
             [ (srcI,arch)
-            | binI <- S.toList addedBinaries
+            | binI <- IxS.toList addedBinaries
             , let srcI = builtBy unstable IxM.! binI 
-            , srcI `S.notMember` addedSources
+            , srcI `IxS.notMember` addedSources
             , Binary _ _ (ST.Just arch) <- [ ai `lookupBin` binI]
             ]
 
-splitAtomIs ai = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
+splitAtomIs ai = (\(l1,l2,l3) -> (IxS.fromList l1, IxS.fromList l2, IxS.fromList l3)) .
              S.fold select ([],[],[])
   where select (Index i) ~(l1,l2,l3) = case ai `lookupAtom` Index i of
             (SrcAtom x) -> (Index i:l1,l2,l3)

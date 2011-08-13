@@ -23,6 +23,7 @@ import Data.Functor
 import DebVersionCmp
 import Indices
 import qualified IndexMap as IxM
+import qualified IndexSet as IxS
 
 type Set = S.Set
 type Map = M.Map
@@ -187,9 +188,9 @@ lookupAtom :: AtomIndex -> AtomI -> Atom
 lookupAtom (_,m,_) (Index i) = m IM.! i
 
 data SuiteInfo = SuiteInfo {
-    sources :: S.Set SrcI,
-    binaries :: S.Set BinI,
-    atoms :: S.Set AtomI,
+    sources :: IxS.Set Source,
+    binaries :: IxS.Set Binary,
+    atoms :: IxS.Set Atom,
     sourceNames :: Map SourceName [SrcI],
     binaryNames :: Map (BinName, Arch) [BinI],
     builds :: IxM.Map Source [BinI],
