@@ -34,10 +34,8 @@ Executable SAT-Britney
         , strict
         , deepseq
         , bitarray
-        , unordered-containers
         , vector
         , vector-algorithms
-        , hashable
 
   Pkgconfig-Depends: 
         libdpkg

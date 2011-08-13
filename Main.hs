@@ -144,8 +144,8 @@ runBritney config = do
         rulesT = map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
                  rules
-        cnfT = clauses2CNF rulesT
-        relaxableClauses = clauses2CNF relaxable
+        cnfT = clauses2CNF (maxIndex ai) rulesT
+        relaxableClauses = clauses2CNF (maxIndex ai) relaxable
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
     removeClauseE <- runRelaxer (maxIndex ai) relaxableClauses cnfT
@@ -164,11 +164,11 @@ runBritney config = do
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
         cleanedRules = extraRules ++ rules ++ (relaxable `removeRelated` removeClause)
-        cnf = clauses2CNF cleanedRules
+        cnf = clauses2CNF (maxIndex ai) cleanedRules
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
-        L.hPut h $ formatCNF (onlyCNF (maxIndex ai) cnf)
+        L.hPut h $ formatCNF cnf
         hFlush h
 
     mbDo (clausesH config) $ \h -> do
