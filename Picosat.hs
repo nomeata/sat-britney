@@ -39,6 +39,7 @@ import Data.BitArray
 import Control.Exception.Base (try)
 import qualified Data.Vector.Unboxed as U
 import qualified Data.Vector.Algorithms.Insertion as Insertion
+import qualified Data.Vector.Unboxed.Mutable as UM
 import Control.Monad.ST
 
 import qualified Data.IntSet as IS
@@ -56,7 +57,9 @@ type AssignmentMask = BitArray
 
 atoms2Conj :: a -> [Int] -> Conj a
 atoms2Conj x list = (,x) $ U.create $ do
-    v <- U.unsafeThaw (U.fromList list) 
+    let i = U.fromList list
+    v <- UM.new (U.length i)
+    U.copy v i 
     Insertion.sortBy (compare `on` abs) v
     return v
 
