@@ -22,8 +22,6 @@ import Picosat
 import Types
 import Indices
 
-type CNF2Clause a = CNF (Clause a)
-
 {-
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = foldl go M.empty
@@ -37,7 +35,7 @@ allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 -}
 
-clauses2CNF :: AtomI -> [Clause AtomI] -> CNF2Clause AtomI
+clauses2CNF :: AtomI -> [Clause AtomI] -> CNF (Clause AtomI)
 clauses2CNF (Index mv) clauses = (concatMap clause2CNF clauses, mv)
 
 clause2CNF :: Clause AtomI -> [Conj (Clause AtomI)]
@@ -58,14 +56,14 @@ clause2CNF c@(Not a _) = [ atom2Conj c (-ai) ]
 cnf2Clause = fastNub . map snd . fst
     where fastNub = S.toList . S.fromList
 
-runClauseSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF2Clause AtomI -> IO (Either [Clause AtomI] (S.Set AtomI))
+runClauseSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF (Clause AtomI) -> IO (Either [Clause AtomI] (S.Set AtomI))
 runClauseSAT mi desired unwanted cnf = do
     result <- runPicosatPMAX (map unIndex desired ++ map (negate . unIndex) unwanted) cnf
     case result of
         Left core -> return  $ Left $ cnf2Clause core
         Right vars -> return $ Right $ varsToSet vars
 
-runClauseMINMAXSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF2Clause AtomI -> IO (Either [Clause AtomI] (S.Set AtomI, [S.Set AtomI]))
+runClauseMINMAXSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF (Clause AtomI) -> IO (Either [Clause AtomI] (S.Set AtomI, [S.Set AtomI]))
 runClauseMINMAXSAT mi desired unwanted cnf = do
     result <- runPicosatPMINMAX (map unIndex desired ++ map (negate . unIndex) unwanted) cnf
     case result of
@@ -75,7 +73,7 @@ runClauseMINMAXSAT mi desired unwanted cnf = do
 varsToSet :: [Int] -> S.Set AtomI
 varsToSet vars = S.fromList [ Index i | i <- vars, i > 0] 
 
-runRelaxer :: AtomI -> CNF2Clause AtomI -> CNF2Clause AtomI -> IO (Either [Clause AtomI] [Clause AtomI])
+runRelaxer :: AtomI -> CNF (Clause AtomI) -> CNF (Clause AtomI) -> IO (Either [Clause AtomI] [Clause AtomI])
 runRelaxer mi relaxable cnf = do
     removeCNF <- relaxer relaxable cnf
     return $ either (Left . cnf2Clause) (Right . cnf2Clause) removeCNF
