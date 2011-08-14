@@ -12,6 +12,12 @@ import Indices
 newtype Set a = IndexSet { unIndexSet :: S.IntSet }
   deriving (NFData)
 
+empty :: Set a
+empty = IndexSet S.empty
+
+insert :: Index a -> Set a -> Set a
+Index x `insert` IndexSet s = IndexSet $ x `S.insert` s
+
 notMember :: Index a -> Set a -> Bool
 Index x `notMember` IndexSet s = x `S.notMember` s
 
@@ -41,6 +47,9 @@ fromDistinctAscList l = IndexSet $ S.fromDistinctAscList (unIndex <$> l)
 
 filter :: (Index a -> Bool) -> Set a -> Set a
 filter f (IndexSet s) = IndexSet $ S.filter (f . Index) s
+
+fold :: (Index a -> b -> b) -> b -> Set a -> b
+fold f x (IndexSet s) = S.fold (\i x' -> f (Index i) x') x s
 
 generalize :: Set a -> Set b
 -- generalize (IndexSet s) = IndexSet $ S.mapMonotonic (\(Index i) -> Index i)

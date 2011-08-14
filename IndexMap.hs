@@ -48,3 +48,6 @@ filterWithKey f (IndexMap m) = IndexMap $ M.filterWithKey (\k v -> f (Index k) v
 map :: (a1 -> b) -> Map t a1 -> Map a b
 map f (IndexMap m) = IndexMap $ M.map f m
 
+foldWithKey :: (Index t -> a -> b -> b) -> b -> Map t a -> b
+foldWithKey f x (IndexMap m) = M.foldWithKey (\i v x' -> f (Index i) v x') x m
+
