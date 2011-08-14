@@ -21,6 +21,9 @@ findWithDefault d (Index i) (IndexMap m) = M.findWithDefault d i m
 union :: Map t b -> Map t1 b -> Map a b
 IndexMap m1 `union` IndexMap m2 = IndexMap (m1 `M.union` m2)
 
+size :: Map t a -> Int
+size (IndexMap s) = M.size s
+
 difference :: Map t b -> Map t1 b1 -> Map a b
 IndexMap m1 `difference` IndexMap m2 = IndexMap (m1 `M.difference` m2)
 
@@ -50,4 +53,7 @@ map f (IndexMap m) = IndexMap $ M.map f m
 
 foldWithKey :: (Index t -> a -> b -> b) -> b -> Map t a -> b
 foldWithKey f x (IndexMap m) = M.foldWithKey (\i v x' -> f (Index i) v x') x m
+
+fold :: (a -> b -> b) -> b -> Map t a -> b
+fold f x (IndexMap m) = M.fold f x m
 
