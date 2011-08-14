@@ -39,7 +39,9 @@ instance PP a => PP (Clause a) where
         text "not" <+> pp ai atom
         <+> text "because" <+> text reason
 
-instance PP Atom where pp _ a = text (show a)
+instance PP Atom where
+    pp ai (InstAtom (Inst f p)) = pp ai p <> char '@' <> pp ai f
+    pp _ a = text (show a)
 
 instance PP (Index a) where pp ai@(_,m,_) (Index i) = pp ai (m ! i)
 

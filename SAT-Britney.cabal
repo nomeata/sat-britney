@@ -19,6 +19,7 @@ Executable SAT-Britney
 
   Build-Depends: base ==4.*
         , containers
+        , mtl
         , array
         , directory
         , bytestring

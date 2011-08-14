@@ -84,7 +84,18 @@ data Binary = Binary
 
 instance NFData Binary
 
-data Atom = SrcAtom !Source | BinAtom !Binary | BugAtom !Bug
+data Inst = Inst
+    { instFor :: !BinI
+    , instBin :: !BinI 
+    }
+    deriving (Ord, Eq)
+
+instance NFData Inst
+
+data Atom = SrcAtom !Source
+          | BinAtom !Binary
+          | BugAtom !Bug
+          | InstAtom !Inst
     deriving (Ord, Eq)
 
 instance NFData Atom
@@ -96,9 +107,13 @@ instance Show Binary where
     show (Binary bn v ST.Nothing)  = show bn ++ "_" ++ show v ++ "_all"
     show (Binary bn v (ST.Just a)) = show bn ++ "_" ++ show v ++ "_" ++ show a
 
+instance Show Inst where
+    show (Inst for bin) = show bin ++ "@" ++ show for
+
 instance Show Atom where
     show (SrcAtom src) = show src
     show (BinAtom bin) = show bin
+    show (InstAtom inst) = show inst
     show (BugAtom bug) = "rc_bug_" ++ show bug
 
 newtype Bug = Bug { unBug :: Int }
@@ -143,6 +158,7 @@ type Counter = Int
 type BinI = Index Binary
 type SrcI = Index Source
 type BugI = Index Bug
+type InstI = Index Inst
 type AtomI = Index Atom
 
 genIndex :: Index a -> Index Atom
@@ -162,6 +178,8 @@ indexSrc :: AtomIndex -> Source -> Maybe SrcI
 indexSrc (m,_,_) s = Index <$> SrcAtom s `M.lookup` m
 indexBug :: AtomIndex -> Bug -> Maybe BugI
 indexBug (m,_,_) b = Index <$> BugAtom b `M.lookup` m
+indexInst :: AtomIndex -> Inst -> Maybe InstI
+indexInst (m,_,_) i' = Index <$> InstAtom i' `M.lookup` m
 indexAtom :: AtomIndex -> Atom -> Maybe AtomI
 indexAtom (m,_,_) a = Index <$> a `M.lookup` m
 
@@ -178,12 +196,19 @@ addBug a2i@(m,m',c) b = case indexBug a2i b of
                     Just i -> (a2i, i)
                     Nothing -> (((BugAtom b `M.insert` c) m, (c `IM.insert` BugAtom b) m', succ c), Index c)
 
+addInst :: AtomIndex -> Inst -> (AtomIndex, InstI)
+addInst a2i@(m,m',c) i' = case indexInst a2i i' of
+                    Just i -> (a2i, i)
+                    Nothing -> (((InstAtom i' `M.insert` c) m, (c `IM.insert` InstAtom i') m', succ c), Index c)
+
 lookupBin :: AtomIndex -> BinI -> Binary
 lookupBin (_,m,_) (Index i) = (\(BinAtom b) -> b) (m IM.! i)
 lookupSrc :: AtomIndex -> SrcI -> Source
 lookupSrc (_,m,_) (Index i) = (\(SrcAtom b) -> b) (m IM.! i)
 lookupBug :: AtomIndex -> BugI -> Bug
 lookupBug (_,m,_) (Index i) = (\(BugAtom b) -> b) (m IM.! i)
+lookupInst :: AtomIndex -> InstI -> Inst
+lookupInst (_,m,_) (Index i) = (\(InstAtom b) -> b) (m IM.! i)
 lookupAtom :: AtomIndex -> AtomI -> Atom
 lookupAtom (_,m,_) (Index i) = m IM.! i
 
@@ -219,11 +244,14 @@ data Config = Config
     , minAges :: Map Urgency Age
     , defaultMinAge :: Age
 
+    , fullDependencies :: Bool
+
     , transSize :: TransSize
 
     , relaxationH :: Maybe Handle
     , verboseRelaxation :: Bool
     , clausesH :: Maybe Handle
+    , clausesUnrelaxH :: Maybe Handle
     , dimacsH :: Maybe Handle
     , differenceH :: Maybe Handle
     , hintsH :: Maybe Handle

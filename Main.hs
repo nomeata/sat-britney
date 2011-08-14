@@ -40,8 +40,8 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10) AsLargeAsPossible
-                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing
+defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
+                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
 allArches = map (Arch . BS.pack) $ words
@@ -77,6 +77,9 @@ opts =
     , Option "r" ["release-arches"]
       (ReqArg (\as config -> return (config { releaseArches = toArchList as })) "ARCH,...")
       "comma-separated list of arches to consider release critical.\nDefaults to all"
+    , Option "" ["clauses-unrelax"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { clausesUnrelaxH = h })) "FILE")
+      "print literate clauses before relaxation to this file"
     , Option "" ["relaxation"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { relaxationH = h })) "FILE")
       "print relaxation clauses to this file"
@@ -95,6 +98,9 @@ opts =
     , Option "" ["hints"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { hintsH = h })) "FILE")
       "print britney2 hints to this file"
+    , Option "" ["full-dependencies"]
+      (NoArg (\config -> return (config { fullDependencies = True })))
+      "model dependency graph per package"
     , Option "" ["migrate"]
       (ReqArg (\ss config -> parseAtom ss >>= \s -> return (config { migrateThis = Just s })) "PKG")
       "find a migration containing this package.\nIf it is a source package, it ignores this package's age"
@@ -128,26 +134,37 @@ main = do
 runBritney config = do
     let ai1 = emptyIndex
     (unstableFull, ai2) <- parseSuite config ai1 (dir config </> "unstable")
-    (testing, ai)  <- parseSuite config ai2 (dir config </> "testing")
+    (testing, ai3)  <- parseSuite config ai2 (dir config </> "testing")
 
     config <- case migrateThis config of
         Nothing -> return config
-        Just atom -> case ai `indexAtom` atom of 
+        Just atom -> case ai3 `indexAtom` atom of 
             Nothing -> hPutStrLn stderr ("Package " ++ show atom ++ " not known") >> exitFailure
             Just i -> return $ config { migrateThisI = Just i }
 
-    general <- parseGeneralInfo config ai
+    general <- parseGeneralInfo config ai3
 
-    let unstableThin = thinSuite config ai unstableFull general
+    let unstableThin = thinSuite config ai3 unstableFull general
     hPutStrLn stderr $ "Thinning unstable to " ++ show (IxS.size (sources unstableThin)) ++
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
 
-    let (rules, relaxable, desired, unwanted) = transitionRules config ai unstableThin testing general
+    let (rules, relaxable, desired, unwanted, ai) = transitionRules config ai3 unstableThin testing general
         rulesT = map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
                  rules
         cnfT = clauses2CNF (maxIndex ai) rulesT
         relaxableClauses = clauses2CNF (maxIndex ai) relaxable
+
+    hPutStrLn stderr $ "Constructed " ++ show (length rulesT) ++ " hard and " ++
+        show (length relaxable) ++ " soft clauses."
+
+    mbDo (clausesUnrelaxH config) $ \h -> do
+        hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
+        hPrint h $ nest 4 (vcat (map (pp ai) rulesT))
+        hPutStrLn h ""
+        hPrint h $ nest 4 (vcat (map (pp ai) relaxable))
+        hFlush h
+
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
     removeClauseE <- runRelaxer (maxIndex ai) relaxableClauses cnfT

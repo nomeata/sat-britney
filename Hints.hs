@@ -46,3 +46,4 @@ splitAtomIs ai = (\(l1,l2,l3) -> (IxS.fromList l1, IxS.fromList l2, IxS.fromList
             (SrcAtom x) -> (Index i:l1,l2,l3)
             (BinAtom x) -> (l1,Index i:l2,l3)
             (BugAtom x) -> (l1,l2,Index i:l3)
+            _           -> (l1,l2,l3)

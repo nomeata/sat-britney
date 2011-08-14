@@ -14,6 +14,8 @@ import qualified Data.Map as M
 import Data.Functor
 import Data.Function
 import Control.Arrow ((&&&))
+import Control.Monad.State
+import Debug.Trace
 
 import Types
 import LitSat
@@ -47,10 +49,28 @@ thinSuite config ai suite general = SuiteInfo
             Nothing -> False
 
 transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
-    , conflictClauses ++ dependencies
-    , desired , unwanted )
-  where relaxable = conflictClauses ++ dependencies
+    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependencies
+    , conflictClauses ++ softDependencies
+    , desired
+    , unwanted
+    , ai'
+    )
+  where depSet = IxM.fromList [ (p,d) | p <- IxS.toList binariesUnion,
+                                        let d = execState (deps p) IxS.empty ]
+          where deps d = do
+                    ex <- gets (d `IxS.member`)
+                    unless ex $ do
+                        modify (IxS.insert d)
+                        let Binary _ _ arch = ai `lookupBin` d
+                        mapM_ deps $ [ d' |
+                            (disj, _) <- dependsUnion IxM.! d,
+                            d' <- nub . concatMap (resolve arch) $ disj
+                            ] 
+        
+        ai' = IxM.foldWithKey (\p s ai ->
+                    IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s
+                ) ai depSet
+        
         keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -73,15 +93,32 @@ transitionRules config ai unstable testing general =
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
             ]
-        dependencies =
-            {-# SCC "dependencies" #-}
-            -- Dependencies
+        softDependencies | fullDependencies config =
+            [Implies (genIndex forI) [instI] "the package ought to be installable." |
+                forI <- IxS.toList binariesUnion,
+                let instI = genIndex . fromJust . indexInst ai' . Inst forI $ forI
+            ]
+                         | otherwise = 
+            -- Any package needs to be installable
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList dependsUnion,
                 let Binary _ _ arch = ai `lookupBin` binI,
                 (disjunction, reason) <- depends,
                 let deps = map genIndex . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
             ]
+        hardDependencies | fullDependencies config =
+            {-# SCC "dependencies" #-}
+            -- Dependencies
+            [Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (forI,binIs) <- IxM.toList depSet,
+                binI <- IxS.toList binIs,
+                let instI = genIndex . fromJust . indexInst ai' . Inst forI $ binI,
+                let depends = dependsUnion IxM.! binI,
+                let Binary _ _ arch = ai `lookupBin` binI,
+                (disjunction, reason) <- depends,
+                let deps = map (genIndex . fromJust . indexInst ai' . Inst forI) . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
+            ] 
+                         | otherwise = []
         conflictClauses =
             {-# SCC "conflictClauses" #-}
             -- Conflicts
@@ -201,9 +238,11 @@ transitionRules config ai unstable testing general =
                              `IxS.difference` youngSource
         unwanted = [] -- fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
 
+        binariesUnion = binaries testing `IxS.union` binaries unstable
+
         sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
-        binariesUnion = {-# SCC "binariesUnion" #-} M.unionWith (++) (binaryNames unstable) (binaryNames testing)
+        binaryNamesUnion = {-# SCC "binaryNamesUnion" #-} M.unionWith (++) (binaryNames unstable) (binaryNames testing)
         providesUnion = {-# SCC "providesUnion" #-} M.unionWith (++) (provides unstable) (provides testing)
         -- We assume that the dependency information is the same, even from different suites
         dependsUnion = {-# SCC "dependsUnion" #-} IxM.union (depends unstable) (depends testing)
@@ -233,7 +272,7 @@ transitionRules config ai unstable testing general =
         resolve mbArch (DepRel name mbVerReq mbArchReq)
             | checkArchReq mbArchReq = 
                 [ binI |
-                    binI <- M.findWithDefault [] (name, arch) binariesUnion,
+                    binI <- M.findWithDefault [] (name, arch) binaryNamesUnion,
                     let Binary pkg version _ = ai `lookupBin` binI,
                     checkVersionReq mbVerReq (Just version)
                 ] ++ 
