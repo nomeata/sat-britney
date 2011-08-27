@@ -150,8 +150,8 @@ runBritney config = do
 
     let pi = resolvePackageInfo config ai3 [testingRPI, unstableThinRPI]
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts."
-    
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxS.size (hasBadConflictInDeps pi)) ++ " have bad conflicts."
+
     let (rules, relaxable, desired, unwanted, ai) =
             transitionRules config ai3 unstableThin testing general pi
         rulesT = map (\i -> Not i "we are investigating testing") desired ++

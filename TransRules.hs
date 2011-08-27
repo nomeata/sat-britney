@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 -- |
 -- Module: TransRules
 -- Copyright: (c) 2011 Joachim Breitner
@@ -51,8 +52,7 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
             Nothing -> False
 
 resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
-resolvePackageInfo config ai rawPackageInfos =
-    PackageInfo builtBy depends dependsRel conflicts conflictsRel hasConflict 
+resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
         
         depends = IxM.mapWithKey 
@@ -66,12 +66,13 @@ resolvePackageInfo config ai rawPackageInfos =
 
         revDependsRel = reverseRel dependsRel
 
+        dependsHull = transitiveHull dependsRel
 
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
                         (\binI -> let Binary _ _ arch = ai `lookupBin` binI
                                   in map $ first $ nub . concatMap (resolve arch)
-                                                       . filter depRelHasUpperBound
+                                                       -- . filter depRelHasUpperBound
                         )
                         (IxM.unions (map conflictsR rawPackageInfos))
                     )
@@ -95,6 +96,20 @@ resolvePackageInfo config ai rawPackageInfos =
 
         hasConflict = IxM.keysSet conflictsRel
 
+        hasConflictInDeps = go hasConflict IxS.empty
+          where go new cid | IxS.null new = cid
+                           | otherwise = 
+                    let new' = IxS.unions $ mapMaybe (`IxM.lookup` revDependsRel) $ IxS.toList new
+                        cid' = cid `IxS.union` new
+                    in  go (new' `IxS.difference` cid') cid'
+
+        hasBadConflictInDeps = flip IxS.filter hasConflictInDeps $ \p -> 
+            let deps  = IxM.findWithDefault IxS.empty p dependsHull
+                other = IxS.unions $
+                        mapMaybe (`IxM.lookup` conflictsRel) $
+                        IxS.toList deps 
+            in  not $ IxS.null $ other `IxS.intersection` deps
+
         binaryNamesUnion = M.unionsWith (++) (map binaryNamesR rawPackageInfos)
 
         providesUnion = M.unionsWith (++) (map providesR rawPackageInfos)
@@ -117,9 +132,18 @@ resolvePackageInfo config ai rawPackageInfos =
                 checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
                 checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
         
+        -- Could be implemented better
+        transitiveHull rel = IxM.fromList $
+            [ (p,d) | (p,_) <- IxM.toList rel, let d = execState (deps p) (IxS.singleton p) ]
+          where deps d = do
+                    ex <- gets (d `IxS.member`)
+                    unless ex $ do
+                        modify (IxS.insert d)
+                        mapM_ deps $ [ d' | d' <- IxS.toList (rel IxM.! d) ] 
+        
         reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
                        [ (x1, IxS.singleton x2) |
-                            (x2,x1S) <- IxM.toList flatConflicts,
+                            (x2,x1S) <- IxM.toList rel,
                             x1 <- IxS.toList x1S
                        ]
 
