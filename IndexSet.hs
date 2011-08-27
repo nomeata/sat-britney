@@ -18,6 +18,9 @@ empty = IndexSet S.empty
 insert :: Index a -> Set a -> Set a
 Index x `insert` IndexSet s = IndexSet $ x `S.insert` s
 
+singleton :: Index a -> Set a
+singleton (Index x) = IndexSet $ S.singleton x
+
 notMember :: Index a -> Set a -> Bool
 Index x `notMember` IndexSet s = x `S.notMember` s
 
@@ -26,6 +29,9 @@ Index x `member` IndexSet s = x `S.member` s
 
 size :: Set a -> Int
 size (IndexSet s) = S.size s
+
+null :: Set a -> Bool
+null (IndexSet s) = S.null s
 
 union :: Set a -> Set a -> Set a
 IndexSet m1 `union` IndexSet m2 = IndexSet (m1 `S.union` m2)

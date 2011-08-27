@@ -61,6 +61,12 @@ fromDistinctAscList l = IndexMap $ M.fromDistinctAscList (first unIndex <$> l)
 filterWithKey :: (Index a1 -> b -> Bool) -> Map t b -> Map a b
 filterWithKey f (IndexMap m) = IndexMap $ M.filterWithKey (\k v -> f (Index k) v) m
 
+insertWith :: (b -> b -> b) -> Index t -> b -> Map t b -> Map a b
+insertWith f (Index k) v (IndexMap m) = IndexMap $ M.insertWith f k v m
+
+filter :: (b -> Bool) -> Map t b -> Map a b
+filter f (IndexMap m) = IndexMap $ M.filter f m
+
 map :: (a1 -> b) -> Map t a1 -> Map t b
 map f (IndexMap m) = IndexMap $ M.map f m
 
