@@ -22,6 +22,13 @@ empty = IndexMap M.empty
 lookup :: Index t -> Map t a -> Maybe a
 lookup (Index i) (IndexMap m) = M.lookup i m
 
+notMember :: Index t -> Map t a -> Bool
+Index x `notMember` IndexMap s = x `M.notMember` s
+
+member :: Index t -> Map t a -> Bool
+Index x `member` IndexMap s = x `M.member` s
+
+
 findWithDefault :: a -> Index t -> Map t a -> a
 findWithDefault d (Index i) (IndexMap m) = M.findWithDefault d i m
 

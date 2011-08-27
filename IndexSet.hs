@@ -33,6 +33,9 @@ size (IndexSet s) = S.size s
 null :: Set a -> Bool
 null (IndexSet s) = S.null s
 
+isSubsetOf :: Set a -> Set a -> Bool
+IndexSet m1 `isSubsetOf` IndexSet m2 = m1 `S.isSubsetOf` m2
+
 union :: Set a -> Set a -> Set a
 IndexSet m1 `union` IndexSet m2 = IndexSet (m1 `S.union` m2)
 
