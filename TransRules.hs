@@ -64,6 +64,9 @@ resolvePackageInfo config ai rawPackageInfos =
                      IxM.map (IxS.fromList . concatMap fst) $
                      depends
 
+        revDependsRel = reverseRel dependsRel
+
+
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
                         (\binI -> let Binary _ _ arch = ai `lookupBin` binI
@@ -88,12 +91,7 @@ resolvePackageInfo config ai rawPackageInfos =
                         conflicts
 
         conflictsRel :: IxM.Map Binary (IxS.Set Binary)
-        conflictsRel = IxM.unionWith (IxS.union) flatConflicts $
-                       foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
-                       [ (bin1, IxS.singleton bin2) |
-                            (bin2,bin1S) <- IxM.toList flatConflicts,
-                            bin1 <- IxS.toList bin1S
-                       ]
+        conflictsRel = IxM.unionWith (IxS.union) flatConflicts (reverseRel flatConflicts)
 
         hasConflict = IxM.keysSet conflictsRel
 
@@ -119,6 +117,11 @@ resolvePackageInfo config ai rawPackageInfos =
                 checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
                 checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
         
+        reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
+                       [ (x1, IxS.singleton x2) |
+                            (x2,x1S) <- IxM.toList flatConflicts,
+                            x1 <- IxS.toList x1S
+                       ]
 
 transitionRules
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
