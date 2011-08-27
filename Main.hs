@@ -133,8 +133,8 @@ main = do
 
 runBritney config = do
     let ai1 = emptyIndex
-    (unstableFull, ai2) <- parseSuite config ai1 (dir config </> "unstable")
-    (testing, ai3)  <- parseSuite config ai2 (dir config </> "testing")
+    (unstableFull, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
+    (testing, testingRPI, ai3)  <- parseSuite config ai2 (dir config </> "testing")
 
     config <- case migrateThis config of
         Nothing -> return config
@@ -144,11 +144,14 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai3
 
-    let unstableThin = thinSuite config ai3 unstableFull general
+    let (unstableThin, unstableThinRPI) = thinSuite config unstableFull unstableRPI general
     hPutStrLn stderr $ "Thinning unstable to " ++ show (IxS.size (sources unstableThin)) ++
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
 
-    let (rules, relaxable, desired, unwanted, ai) = transitionRules config ai3 unstableThin testing general
+    let pi = resolvePackageInfo config ai3 [testingRPI, unstableThinRPI]
+    
+    let (rules, relaxable, desired, unwanted, ai) =
+            transitionRules config ai3 unstableThin testing general pi
         rulesT = map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
                  rules
@@ -231,7 +234,7 @@ runBritney config = do
 
             mbDo (hintsH config) $ \h -> do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints ai testing unstableThin thisTransitionNewAtomsIs
+                    L.hPut h $ generateHints ai testing unstableThin pi thisTransitionNewAtomsIs
                 hFlush h
 
     hPutStrLn stderr $ "Done"

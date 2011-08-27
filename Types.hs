@@ -212,6 +212,9 @@ lookupInst (_,m,_) (Index i) = (\(InstAtom b) -> b) (m IM.! i)
 lookupAtom :: AtomIndex -> AtomI -> Atom
 lookupAtom (_,m,_) (Index i) = m IM.! i
 
+-- | Data specific to one suite
+--
+-- TODO: could be removed from here
 data SuiteInfo = SuiteInfo {
     sources :: IxS.Set Source,
     binaries :: IxS.Set Binary,
@@ -219,19 +222,39 @@ data SuiteInfo = SuiteInfo {
     sourceNames :: Map SourceName [SrcI],
     binaryNames :: Map (BinName, Arch) [BinI],
     builds :: IxM.Map Source [BinI],
-    builtBy :: IxM.Map Binary SrcI,
-    depends :: IxM.Map Binary Dependency,
-    provides :: Map (BinName, Arch) [BinI],
-    conflicts :: IxM.Map Binary Dependency,
-    breaks :: IxM.Map Binary Dependency,
     newerSources :: IxM.Map Source [SrcI],
     bugs :: IxM.Map Atom [BugI]
     }
+    deriving (Show)
+
+-- | Data that comes from one suite, but really ought to apply to all of them,
+-- e.g. because it is actually properties of binaries.
+-- 
+-- Raw variant, e.g. before resolving dependencies and conflicts.
+data RawPackageInfo = RawPackageInfo {
+    binaryNamesR :: Map (BinName, Arch) [BinI], -- Duplicate from SuiteInfo
+    builtByR :: IxM.Map Binary SrcI,
+    dependsR :: IxM.Map Binary Dependency,
+    providesR :: Map (BinName, Arch) [BinI],
+    conflictsR :: IxM.Map Binary Dependency,
+    breaksR :: IxM.Map Binary Dependency
+}
+    deriving (Show)
+    
+data PackageInfo = PackageInfo {
+    builtBy :: IxM.Map Binary SrcI,
+    depends :: IxM.Map Binary [([BinI], ByteString)],
+    conflicts :: IxM.Map Binary [([BinI], ByteString)],
+    conflictsRel :: IxM.Map Binary (IxS.Set Binary),
+    hasConflict :: (IxS.Set Binary)
+}
+    deriving (Show)
 
 data GeneralInfo = GeneralInfo {
     urgencies :: Map SrcI Urgency,
     ages :: Map SrcI Age
     }
+    deriving (Show)
 
 data TransSize = AsLargeAsPossible | AsSmallAsPossible | ManySmall | AnySize
     deriving (Eq)

@@ -32,7 +32,7 @@ myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
     parseControlFile file
 
-parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, AtomIndex)
+parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, RawPackageInfo, AtomIndex)
 parseSuite config ai dir = do
     {-
     sources <- myParseControl (dir </>"Sources")
@@ -151,20 +151,23 @@ parseSuite config ai dir = do
 
     hPutStrLn stderr $ "Done reading input files, " ++ show (IxS.size sourceAtoms) ++
                        " sources, " ++ show (IxS.size binaries) ++ " binaries."
-    return $ (SuiteInfo
-        sourceAtoms
-        binaries
-        atoms
-        sourceNames
-        binaryNames
-        builds
-        builtBy
-        depends
-        provides
-        conflicts
-        breaks
-        newerSources
-        bugs
+    return
+        ( SuiteInfo
+            sourceAtoms
+            binaries
+            atoms
+            sourceNames
+            binaryNames
+            builds
+            newerSources
+            bugs
+        , RawPackageInfo
+            binaryNames
+            builtBy
+            depends
+            provides
+            conflicts
+            breaks
         , ai'')
 
 parseGeneralInfo :: Config -> AtomIndex -> IO GeneralInfo

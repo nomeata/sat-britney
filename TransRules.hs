@@ -6,14 +6,13 @@
 module TransRules where
 
 import Data.List
-import Data.Map ((!))
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import qualified Data.Map as M
 import Data.Functor
 import Data.Function
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), first)
 import Control.Monad.State
 import Debug.Trace
 
@@ -22,24 +21,27 @@ import LitSat
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
-thinSuite config ai suite general = SuiteInfo
+thinSuite :: Config -> SuiteInfo -> RawPackageInfo -> GeneralInfo -> (SuiteInfo, RawPackageInfo)
+thinSuite config suite rawPackageInfo general = (SuiteInfo
     { sources = sources'
     , binaries = binaries'
     , atoms = atoms'
     , sourceNames = M.map (filter (`IxS.member` sources')) $ sourceNames suite
     , binaryNames = M.map (filter (`IxS.member` binaries')) $ binaryNames suite
     , builds = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $ builds suite
-    , builtBy = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ builtBy suite
-    , depends = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ depends suite
-    , provides = M.map (filter (`IxS.member` binaries')) $ provides suite
-    , conflicts = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ conflicts suite
-    , breaks = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ breaks suite
     , newerSources = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $
                      IxM.map (filter (`IxS.member` sources')) $ newerSources suite
     , bugs = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') $ bugs suite
-    }
+    }, RawPackageInfo
+    { providesR = M.map (filter (`IxS.member` binaries')) $ providesR rawPackageInfo
+    , breaksR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ breaksR rawPackageInfo
+    , builtByR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ builtByR rawPackageInfo
+    , dependsR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ dependsR rawPackageInfo
+    , conflictsR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ conflictsR rawPackageInfo
+    , binaryNamesR = M.map (filter (`IxS.member` binaries')) $ binaryNamesR rawPackageInfo
+    })
   where sources' = IxS.filter (not . isTooYoung) $ sources suite
-        binaries' = IxS.filter ((`IxS.member` sources') . (builtBy suite IxM.!)) $ binaries suite
+        binaries' = IxS.filter ((`IxS.member` sources') . (builtByR rawPackageInfo IxM.!)) $ binaries suite
         atoms' = IxS.generalize sources' `IxS.union` IxS.generalize binaries'
 
         isTooYoung src = case src `M.lookup` ages general of
@@ -48,7 +50,62 @@ thinSuite config ai suite general = SuiteInfo
                         in  age <= minAge
             Nothing -> False
 
-transitionRules config ai unstable testing general =
+resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
+resolvePackageInfo config ai rawPackageInfos =
+    PackageInfo builtBy depends conflicts conflictsRel hasConflict
+  where builtBy = IxM.unions $ map builtByR rawPackageInfos
+        
+        depends = IxM.mapWithKey 
+                    (\binI -> let Binary _ _ arch = ai `lookupBin` binI
+                              in map $ first $ nub . concatMap (resolve arch))
+                    (IxM.unions (map dependsR rawPackageInfos))
+
+        conflicts = IxM.unionWith (++)
+                    (IxM.mapWithKey (\binI ->
+                        let Binary _ _ arch = ai `lookupBin` binI
+                        in map $ first $ nub . concatMap (resolve arch) . filter depRelHasUpperBound)
+                        (IxM.unions (map conflictsR rawPackageInfos))
+                    )
+                    (IxM.mapWithKey (\binI ->
+                        let Binary _ _ arch = ai `lookupBin` binI
+                        in map $ first $ nub . concatMap (resolve arch))
+                        (IxM.unions (map breaksR rawPackageInfos))
+                    )
+
+        depRelHasUpperBound (DepRel _ (ST.Just vr) _ ) = hasUpperBound vr
+        depRelHasUpperBound _ = False
+
+        conflictsRel = error "conflictsRel not implemented yet"
+
+        hasConflict = IxM.keysSet conflictsRel
+
+        binaryNamesUnion = M.unionsWith (++) (map binaryNamesR rawPackageInfos)
+
+        providesUnion = M.unionsWith (++) (map providesR rawPackageInfos)
+
+        resolve :: ST.Maybe Arch -> DepRel -> [BinI]
+        resolve mbArch (DepRel name mbVerReq mbArchReq)
+            | checkArchReq mbArchReq = 
+                [ binI |
+                    binI <- M.findWithDefault [] (name, arch) binaryNamesUnion,
+                    let Binary pkg version _ = ai `lookupBin` binI,
+                    checkVersionReq mbVerReq (Just version)
+                ] ++ 
+                if ST.isJust mbVerReq then [] else 
+                [ binI |
+                    binI <- M.findWithDefault [] (name, arch) providesUnion
+                ]
+            | otherwise = []
+          where arch = ST.fromMaybe (archForAll config) mbArch 
+                checkArchReq ST.Nothing = True
+                checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
+                checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
+        
+
+transitionRules
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+     -> ([Clause AtomI], [Clause AtomI], [AtomI], [AtomI], AtomIndex)
+transitionRules config ai unstable testing general pi =
     ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependencies
     , conflictClauses ++ softDependencies
     , desired
@@ -61,11 +118,7 @@ transitionRules config ai unstable testing general =
                     ex <- gets (d `IxS.member`)
                     unless ex $ do
                         modify (IxS.insert d)
-                        let Binary _ _ arch = ai `lookupBin` d
-                        mapM_ deps $ [ d' |
-                            (disj, _) <- dependsUnion IxM.! d,
-                            d' <- nub . concatMap (resolve arch) $ disj
-                            ] 
+                        mapM_ deps $ [ d' | (disj, _) <- depends pi IxM.! d, d' <- disj ] 
         
         ai' = IxM.foldWithKey (\p s ai ->
                     IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s
@@ -101,10 +154,9 @@ transitionRules config ai unstable testing general =
                          | otherwise = 
             -- Any package needs to be installable
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList dependsUnion,
-                let Binary _ _ arch = ai `lookupBin` binI,
+                (binI,depends) <- IxM.toList (depends pi),
                 (disjunction, reason) <- depends,
-                let deps = map genIndex . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
+                let deps = map genIndex disjunction
             ]
         hardDependencies | fullDependencies config =
             {-# SCC "dependencies" #-}
@@ -113,30 +165,17 @@ transitionRules config ai unstable testing general =
                 (forI,binIs) <- IxM.toList depSet,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJust . indexInst ai' . Inst forI $ binI,
-                let depends = dependsUnion IxM.! binI,
-                let Binary _ _ arch = ai `lookupBin` binI,
-                (disjunction, reason) <- depends,
-                let deps = map (genIndex . fromJust . indexInst ai' . Inst forI) . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
+                (disjunction, reason) <- depends pi IxM.! binI,
+                let deps = map (genIndex . fromJust . indexInst ai' . Inst forI) disjunction
             ] 
                          | otherwise = []
         conflictClauses =
             {-# SCC "conflictClauses" #-}
             -- Conflicts
             [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList conflictsUnion,
-                let Binary _ _ arch = ai `lookupBin` binI,
+                (binI,depends) <- IxM.toList (conflicts pi),
                 (disjunction, reason) <- depends,
-                rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
-                hasUpperBound vr,
-                confl <- nub (resolve arch rel)
-            ] ++
-            [NotBoth (genIndex binI) (genIndex confl) ("the package breaks on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList breaksUnion,
-                let Binary _ _ arch = ai `lookupBin` binI,
-                (disjunction, reason) <- depends,
-                rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
-                -- hasUpperBound vr,
-                confl <- nub (resolve arch rel)
+                confl <- disjunction
             ]
         releaseSync = 
             {-# SCC "releaseSync" #-}
@@ -181,7 +220,7 @@ transitionRules config ai unstable testing general =
             {-# SCC "needsSource" #-}
             -- a package needs its source
             [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
-                (bin, src) <- IxM.toList builtByUnion
+                (bin, src) <- IxM.toList (builtBy pi)
             ]
         needsBinary =
             {-# SCC "needsBinary" #-}
@@ -194,9 +233,10 @@ transitionRules config ai unstable testing general =
             {-# SCC "outdated" #-}
             -- release architectures ought not to be out of date
             [Not (genIndex newer) ("is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
-                (binI, src) <- IxM.toList (builtBy unstable),
+                binI <- IxS.toList (binaries unstable),
+                let srcI = builtBy pi IxM.! binI,
                 -- TODO: only release architecture here
-                newer <- newerSources unstable IxM.! src,
+                newer <- newerSources unstable IxM.! srcI,
                 newer `IxS.notMember` sources testing
             ]
         obsolete = 
@@ -242,14 +282,7 @@ transitionRules config ai unstable testing general =
 
         sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
-        binaryNamesUnion = {-# SCC "binaryNamesUnion" #-} M.unionWith (++) (binaryNames unstable) (binaryNames testing)
-        providesUnion = {-# SCC "providesUnion" #-} M.unionWith (++) (provides unstable) (provides testing)
         -- We assume that the dependency information is the same, even from different suites
-        dependsUnion = {-# SCC "dependsUnion" #-} IxM.union (depends unstable) (depends testing)
-        conflictsUnion = {-# SCC "conflictsUnion" #-} IxM.union (conflicts unstable) (conflicts testing)
-        breaksUnion = {-# SCC "breaksUnion" #-} IxM.union (breaks unstable) (breaks testing)
-
-        builtByUnion = {-# SCC "builtByUnion" #-} IxM.union (builtBy unstable) (builtBy testing)
         buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionWith (++) (builds unstable) (builds testing)
 
         bugsUnion = {-# SCC "bugsUnion" #-} IxM.unionWith (++) (bugs unstable) (bugs testing)
@@ -267,24 +300,6 @@ transitionRules config ai unstable testing general =
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
         atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} IxS.difference (atoms unstable) (atoms testing)
-
-        resolve :: ST.Maybe Arch -> DepRel -> [BinI]
-        resolve mbArch (DepRel name mbVerReq mbArchReq)
-            | checkArchReq mbArchReq = 
-                [ binI |
-                    binI <- M.findWithDefault [] (name, arch) binaryNamesUnion,
-                    let Binary pkg version _ = ai `lookupBin` binI,
-                    checkVersionReq mbVerReq (Just version)
-                ] ++ 
-                if ST.isJust mbVerReq then [] else 
-                [ binI |
-                    binI <- M.findWithDefault [] (name, arch) providesUnion
-                ]
-            | otherwise = []
-          where arch = ST.fromMaybe (archForAll config) mbArch 
-                checkArchReq ST.Nothing = True
-                checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
-                checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
 
 -- |Check if a version number satisfies a version requirement.
 checkVersionReq :: ST.Maybe VersionReq -> Maybe DebianVersion -> Bool
