@@ -244,6 +244,7 @@ data RawPackageInfo = RawPackageInfo {
 data PackageInfo = PackageInfo {
     builtBy :: IxM.Map Binary SrcI,
     depends :: IxM.Map Binary [([BinI], ByteString)],
+    dependsRel :: IxM.Map Binary (IxS.Set Binary),
     conflicts :: IxM.Map Binary [([BinI], ByteString)],
     conflictsRel :: IxM.Map Binary (IxS.Set Binary),
     hasConflict :: IxS.Set Binary

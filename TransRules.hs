@@ -52,13 +52,17 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
 
 resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai rawPackageInfos =
-    PackageInfo builtBy depends conflicts conflictsRel hasConflict 
+    PackageInfo builtBy depends dependsRel conflicts conflictsRel hasConflict 
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
         
         depends = IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
                               in map $ first $ nub . concatMap (resolve arch))
                     (IxM.unions (map dependsR rawPackageInfos))
+
+        dependsRel = IxM.filter (not . IxS.null) $
+                     IxM.map (IxS.fromList . concatMap fst) $
+                     depends
 
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
