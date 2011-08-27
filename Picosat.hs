@@ -24,6 +24,7 @@ import Data.ByteString.Nums.Careless
 import System.IO
 import System.Posix.IO
 import System.Process
+import System.Exit
 import Data.Functor
 import Data.List
 import Data.Maybe
@@ -106,8 +107,9 @@ runPicosat cnf = do
     (coreInFd, coreOutFd) <- createPipe
     coreIn <- fdToHandle coreInFd
 
-    (Just hint, Just hout, _, procHandle) <- createProcess $
-        (proc "picosat.trace" ["-c", "/proc/self/fd/" ++ show coreOutFd])
+    let picoProc = proc "picosat.trace" ["-c", "/proc/self/fd/" ++ show coreOutFd]
+
+    (Just hint, Just hout, _, procHandle) <- createProcess $ picoProc
         { std_in = CreatePipe
         , std_out = CreatePipe
         }
@@ -123,7 +125,7 @@ runPicosat cnf = do
         "s UNSATISFIABLE" -> do
             hClose hout
             musString <- BS.hGetContents coreIn
-            waitForProcess procHandle
+            ensureSuccess picoProc procHandle
             let mus = parseCNF (snd cnf) musString
             let annotatedMus = findConj mus cnf
             return (Left annotatedMus)
@@ -139,7 +141,7 @@ runPicosat cnf = do
             let vars = case concatMap BS.words ls of 
                  ints@(_:_) | last ints == BS.pack "0" -> int <$> init ints
                  _ -> error $ "Cannot parse picosat SAT output: " ++ BS.unpack satvarsS
-            waitForProcess procHandle
+            ensureSuccess picoProc procHandle
             return (Right vars)
         s -> do
             error $ "Cannot parse picostat status output: " ++ s
@@ -283,7 +285,8 @@ runAPMAXSolver cmd cnf desired =
     L.hPut handle cnfString
     hClose handle
 
-    (_, Just hout, _, procHandle) <- createProcess $ (cmd tmpfile) { std_out = CreatePipe }
+    let proc = cmd tmpfile
+    (_, Just hout, _, procHandle) <- createProcess $ proc { std_out = CreatePipe }
     
     lines <- filter (not . BS.null) . BS.lines <$> BS.hGetContents hout
     let (slines,(vlines,rest)) =
@@ -291,23 +294,35 @@ runAPMAXSolver cmd cnf desired =
             partition ((=='s') . BS.head) $
             lines
     case slines of 
-        []      -> error $ "PMAX-SAT solver returned no \"s\"-line."
+        []      -> do
+            ensureSuccess proc procHandle
+            error $ "PMAX-SAT solver returned no \"s\"-line."
         (_:_:_) -> do
             error $ "PMAX-SAT solver returned more than one \"s\"-line." ++ 
                     BS.unpack (BS.unlines slines)
         [sline] | sline == "s UNSATISFIABLE" -> do
             hClose hout
-            waitForProcess procHandle
+            ensureSuccess proc procHandle
             return Nothing
                 | sline == "s OPTIMUM FOUND" -> do
             let vars = case concatMap (BS.words . BS.drop 2) vlines of 
                  ints@(_:_) -> filter (/= 0) . fmap int $ ints
                  _ -> error $ "Cannot parse pmaxsatsolver assignment output: " ++
                               BS.unpack (BS.unlines slines)
-            waitForProcess procHandle
+            ensureSuccess proc procHandle
             return (Just vars)
                 | otherwise -> do
             error $ "Cannot parse pmaxsatsolver status output: " ++ BS.unpack sline
+  
+ensureSuccess proc procHandle = do
+    ec <- waitForProcess procHandle
+    case ec of
+        ExitSuccess -> return ()
+        ExitFailure c -> error $ "Command \"" ++ showCmdSpec (cmdspec proc) ++
+            "\" failed with error code " ++ show c
+
+showCmdSpec (ShellCommand cmd) = cmd
+showCmdSpec (RawCommand cmd args) = concat $ intersperse " " (cmd:args)
 
 -- | This takes hard and soft clauses and propagats constants (e.g. variables
 -- fixed by a top level clause), removing variables from clauses or clauses
