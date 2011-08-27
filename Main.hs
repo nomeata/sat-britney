@@ -149,6 +149,8 @@ runBritney config = do
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
 
     let pi = resolvePackageInfo config ai3 [testingRPI, unstableThinRPI]
+
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts."
     
     let (rules, relaxable, desired, unwanted, ai) =
             transitionRules config ai3 unstableThin testing general pi

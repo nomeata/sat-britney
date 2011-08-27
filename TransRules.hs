@@ -52,7 +52,7 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
 
 resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai rawPackageInfos =
-    PackageInfo builtBy depends conflicts conflictsRel hasConflict
+    PackageInfo builtBy depends conflicts conflictsRel hasConflict 
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
         
         depends = IxM.mapWithKey 
@@ -61,21 +61,35 @@ resolvePackageInfo config ai rawPackageInfos =
                     (IxM.unions (map dependsR rawPackageInfos))
 
         conflicts = IxM.unionWith (++)
-                    (IxM.mapWithKey (\binI ->
-                        let Binary _ _ arch = ai `lookupBin` binI
-                        in map $ first $ nub . concatMap (resolve arch) . filter depRelHasUpperBound)
+                    ( IxM.mapWithKey
+                        (\binI -> let Binary _ _ arch = ai `lookupBin` binI
+                                  in map $ first $ nub . concatMap (resolve arch)
+                                                       . filter depRelHasUpperBound
+                        )
                         (IxM.unions (map conflictsR rawPackageInfos))
                     )
-                    (IxM.mapWithKey (\binI ->
-                        let Binary _ _ arch = ai `lookupBin` binI
-                        in map $ first $ nub . concatMap (resolve arch))
+                    ( IxM.mapWithKey
+                        (\binI -> let Binary _ _ arch = ai `lookupBin` binI
+                                  in map $ first $ nub . concatMap (resolve arch)
+                        )
                         (IxM.unions (map breaksR rawPackageInfos))
                     )
 
         depRelHasUpperBound (DepRel _ (ST.Just vr) _ ) = hasUpperBound vr
         depRelHasUpperBound _ = False
 
-        conflictsRel = error "conflictsRel not implemented yet"
+        flatConflicts :: IxM.Map Binary (IxS.Set Binary)
+        flatConflicts = IxM.filter (not . IxS.null) $
+                        IxM.map (IxS.fromList . concatMap fst) $
+                        conflicts
+
+        conflictsRel :: IxM.Map Binary (IxS.Set Binary)
+        conflictsRel = IxM.unionWith (IxS.union) flatConflicts $
+                       foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
+                       [ (bin1, IxS.singleton bin2) |
+                            (bin2,bin1S) <- IxM.toList flatConflicts,
+                            bin1 <- IxS.toList bin1S
+                       ]
 
         hasConflict = IxM.keysSet conflictsRel
 

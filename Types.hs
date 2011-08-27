@@ -246,7 +246,7 @@ data PackageInfo = PackageInfo {
     depends :: IxM.Map Binary [([BinI], ByteString)],
     conflicts :: IxM.Map Binary [([BinI], ByteString)],
     conflictsRel :: IxM.Map Binary (IxS.Set Binary),
-    hasConflict :: (IxS.Set Binary)
+    hasConflict :: IxS.Set Binary
 }
     deriving (Show)
 
