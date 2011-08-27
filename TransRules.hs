@@ -16,6 +16,7 @@ import Data.Function
 import Control.Arrow ((&&&), first)
 import Control.Monad.State
 import Debug.Trace
+import Safe
 
 import Types
 import LitSat
@@ -131,21 +132,21 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                 checkArchReq ST.Nothing = True
                 checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
                 checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
-        
-        -- Could be implemented better
-        transitiveHull rel = IxM.fromList $
-            [ (p,d) | (p,_) <- IxM.toList rel, let d = execState (deps p) (IxS.singleton p) ]
-          where deps d = do
-                    ex <- gets (d `IxS.member`)
-                    unless ex $ do
-                        modify (IxS.insert d)
-                        mapM_ deps $ [ d' | d' <- IxS.toList (rel IxM.! d) ] 
-        
-        reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
-                       [ (x1, IxS.singleton x2) |
-                            (x2,x1S) <- IxM.toList rel,
-                            x1 <- IxS.toList x1S
-                       ]
+
+-- Could be implemented better
+transitiveHull rel = IxM.fromList $
+    [ (p,d) | (p,_) <- IxM.toList rel, let d = execState (deps p) IxS.empty ]
+  where deps d = do
+            ex <- gets (d `IxS.member`)
+            unless ex $ do
+                modify (IxS.insert d)
+                mapM_ deps $ IxS.toList (IxM.findWithDefault IxS.empty d rel)
+
+reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
+               [ (x1, IxS.singleton x2) |
+                    (x2,x1S) <- IxM.toList rel,
+                    x1 <- IxS.toList x1S
+               ]
 
 transitionRules
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
@@ -157,17 +158,10 @@ transitionRules config ai unstable testing general pi =
     , unwanted
     , ai'
     )
-  where depSet = IxM.fromList [ (p,d) | p <- IxS.toList binariesUnion,
-                                        let d = execState (deps p) IxS.empty ]
-          where deps d = do
-                    ex <- gets (d `IxS.member`)
-                    unless ex $ do
-                        modify (IxS.insert d)
-                        mapM_ deps $ [ d' | (disj, _) <- depends pi IxM.! d, d' <- disj ] 
-        
-        ai' = IxM.foldWithKey (\p s ai ->
-                    IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s
-                ) ai depSet
+  where ai' = IxM.foldWithKey
+                (\p s ai -> IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s) ai $
+                -- IxM.filterWithKey (\k _ -> k `IxS.member` hasBadConflictInDeps pi) $
+                dependsHull pi
         
         keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
@@ -194,7 +188,14 @@ transitionRules config ai unstable testing general pi =
         softDependencies | fullDependencies config =
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxS.toList binariesUnion,
-                let instI = genIndex . fromJust . indexInst ai' . Inst forI $ forI
+                forI `IxS.member` hasBadConflictInDeps pi,
+                let instI = genIndex . fromJustNote "Z" . indexInst ai' . Inst forI $ forI
+            ] ++
+            [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (binI,depends) <- IxM.toList (depends pi),
+                binI `IxS.notMember` hasBadConflictInDeps pi,
+                (disjunction, reason) <- depends,
+                let deps = map genIndex disjunction
             ]
                          | otherwise = 
             -- Any package needs to be installable
@@ -206,13 +207,14 @@ transitionRules config ai unstable testing general pi =
         hardDependencies | fullDependencies config =
             {-# SCC "dependencies" #-}
             -- Dependencies
-            [Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (forI,binIs) <- IxM.toList depSet,
+            [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (forI,binIs) <- IxM.toList (dependsHull pi),
+                forI `IxS.member` hasBadConflictInDeps pi,
                 binI <- IxS.toList binIs,
-                let instI = genIndex . fromJust . indexInst ai' . Inst forI $ binI,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai' . Inst forI $ binI,
                 (disjunction, reason) <- depends pi IxM.! binI,
-                let deps = map (genIndex . fromJust . indexInst ai' . Inst forI) disjunction
-            ] 
+                let deps = map (genIndex . fromJustNote "X" . indexInst ai' . Inst forI) disjunction
+            ]
                          | otherwise = []
         conflictClauses =
             {-# SCC "conflictClauses" #-}

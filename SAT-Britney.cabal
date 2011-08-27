@@ -29,6 +29,7 @@ Executable SAT-Britney
         , parsec >= 3.1
         , filepath
         , Cabal
+        , safe
 
         , unix
         , bytestring-nums
