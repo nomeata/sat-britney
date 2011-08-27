@@ -19,13 +19,16 @@ empty = IndexMap M.empty
 (!) :: Map t a -> Index t1 -> a
 (IndexMap m) ! (Index i) = m M.! i
 
-findWithDefault :: a -> Index t -> Map t1 a -> a
+lookup :: Index t -> Map t a -> Maybe a
+lookup (Index i) (IndexMap m) = M.lookup i m
+
+findWithDefault :: a -> Index t -> Map t a -> a
 findWithDefault d (Index i) (IndexMap m) = M.findWithDefault d i m
 
-union :: Map t b -> Map t1 b -> Map a b
+union :: Map t b -> Map t b -> Map t b
 IndexMap m1 `union` IndexMap m2 = IndexMap (m1 `M.union` m2)
 
-unions :: [Map t b] -> Map a b
+unions :: [Map t b] -> Map t b
 unions = IndexMap . M.unions . Prelude.map unIndexMap
 
 unionsWith ::  (b -> b -> b) -> [Map t b] -> Map a b

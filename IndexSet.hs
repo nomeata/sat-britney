@@ -36,6 +36,12 @@ null (IndexSet s) = S.null s
 union :: Set a -> Set a -> Set a
 IndexSet m1 `union` IndexSet m2 = IndexSet (m1 `S.union` m2)
 
+intersection :: Set a -> Set a -> Set a
+IndexSet m1 `intersection` IndexSet m2 = IndexSet (m1 `S.intersection` m2)
+
+unions :: [Set a] -> Set a
+unions = IndexSet . S.unions . Prelude.map unIndexSet
+
 difference :: Set a -> Set a -> Set a
 IndexSet m1 `difference` IndexSet m2 = IndexSet (m1 `S.difference` m2)
 
