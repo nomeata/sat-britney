@@ -7,10 +7,14 @@ import Data.Functor
 import Control.DeepSeq
 
 import qualified Data.IntMap as M
+import qualified IndexSet as IxS
 import Indices
 
 newtype Map a b = IndexMap { unIndexMap :: M.IntMap b }
-  deriving (NFData)
+  deriving (NFData, Show)
+
+empty :: Map t a
+empty = IndexMap M.empty
 
 (!) :: Map t a -> Index t1 -> a
 (IndexMap m) ! (Index i) = m M.! i
@@ -20,6 +24,15 @@ findWithDefault d (Index i) (IndexMap m) = M.findWithDefault d i m
 
 union :: Map t b -> Map t1 b -> Map a b
 IndexMap m1 `union` IndexMap m2 = IndexMap (m1 `M.union` m2)
+
+unions :: [Map t b] -> Map a b
+unions = IndexMap . M.unions . Prelude.map unIndexMap
+
+unionsWith ::  (b -> b -> b) -> [Map t b] -> Map a b
+unionsWith f = IndexMap . M.unionsWith f . Prelude.map unIndexMap
+
+keysSet :: Map t b -> IxS.Set t
+keysSet (IndexMap m) = IxS.IndexSet $ M.keysSet m
 
 size :: Map t a -> Int
 size (IndexMap s) = M.size s
@@ -48,8 +61,11 @@ fromDistinctAscList l = IndexMap $ M.fromDistinctAscList (first unIndex <$> l)
 filterWithKey :: (Index a1 -> b -> Bool) -> Map t b -> Map a b
 filterWithKey f (IndexMap m) = IndexMap $ M.filterWithKey (\k v -> f (Index k) v) m
 
-map :: (a1 -> b) -> Map t a1 -> Map a b
+map :: (a1 -> b) -> Map t a1 -> Map t b
 map f (IndexMap m) = IndexMap $ M.map f m
+
+mapWithKey :: (Index t -> a1 -> b) -> Map t a1 -> Map t b
+mapWithKey f (IndexMap m) = IndexMap $ M.mapWithKey (\i v -> f (Index i) v) m
 
 foldWithKey :: (Index t -> a -> b -> b) -> b -> Map t a -> b
 foldWithKey f x (IndexMap m) = M.foldWithKey (\i v x' -> f (Index i) v x') x m

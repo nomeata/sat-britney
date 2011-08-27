@@ -10,7 +10,7 @@ import qualified Data.IntSet as S
 import Indices
 
 newtype Set a = IndexSet { unIndexSet :: S.IntSet }
-  deriving (NFData)
+  deriving (NFData, Show)
 
 empty :: Set a
 empty = IndexSet S.empty
