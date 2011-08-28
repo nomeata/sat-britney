@@ -227,12 +227,14 @@ transitionRules config ai unstable testing general pi =
             {-# SCC "dependencies" #-}
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (forI,binIs) <- IxM.toList (dependsHull pi),
+                (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 forI `IxS.member` hasBadConflictInDeps pi,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
                 (disjunction, reason) <- depends pi IxM.! binI,
-                let deps = map (genIndex . fromJustNote "X" . indexInst ai . Inst forI) disjunction
+                let (hard,easy) = partition (`IxS.member` hasConflictInDeps pi) disjunction,
+                let deps = map (genIndex . fromJustNote "X" . indexInst ai . Inst forI) hard ++
+                           map genIndex easy
             ]
                          | otherwise = []
         conflictClauses =
