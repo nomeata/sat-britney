@@ -62,7 +62,7 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
         
         depends = IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
-                              in map $ first $ nub . concatMap (resolve arch))
+                              in map $ first $ nub . concatMap (resolveDep arch))
                     (IxM.unions (map dependsR rawPackageInfos))
 
         dependsRel = IxM.filter (not . IxS.null) $
@@ -75,15 +75,15 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
-                        (\binI -> let Binary _ _ arch = ai `lookupBin` binI
-                                  in map $ first $ nub . concatMap (resolve arch)
+                        (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
+                                  in map $ first $ nub . concatMap (resolveConf pkg arch)
                                                        -- . filter depRelHasUpperBound
                         )
                         (IxM.unions (map conflictsR rawPackageInfos))
                     )
                     ( IxM.mapWithKey
-                        (\binI -> let Binary _ _ arch = ai `lookupBin` binI
-                                  in map $ first $ nub . concatMap (resolve arch)
+                        (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
+                                  in map $ first $ nub . concatMap (resolveConf pkg arch)
                         )
                         (IxM.unions (map breaksR rawPackageInfos))
                     )
@@ -119,17 +119,23 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         providesUnion = M.unionsWith (++) (map providesR rawPackageInfos)
 
-        resolve :: ST.Maybe Arch -> DepRel -> [BinI]
-        resolve mbArch (DepRel name mbVerReq mbArchReq)
+        resolveDep  = resolve Nothing
+        resolveConf = resolve . Just 
+
+        resolve :: Maybe BinName -> ST.Maybe Arch -> DepRel -> [BinI]
+        resolve mbPkg mbArch (DepRel name mbVerReq mbArchReq)
             | checkArchReq mbArchReq = 
                 [ binI |
                     binI <- M.findWithDefault [] (name, arch) binaryNamesUnion,
                     let Binary pkg version _ = ai `lookupBin` binI,
+                    maybe True (/= pkg) mbPkg, -- conflicts only with different names
                     checkVersionReq mbVerReq (Just version)
                 ] ++ 
                 if ST.isJust mbVerReq then [] else 
                 [ binI |
-                    binI <- M.findWithDefault [] (name, arch) providesUnion
+                    binI <- M.findWithDefault [] (name, arch) providesUnion,
+                    let Binary pkg _ _ = ai `lookupBin` binI,
+                    maybe True (/= pkg) mbPkg -- conflicts only with different names
                 ]
             | otherwise = []
           where arch = ST.fromMaybe (archForAll config) mbArch 
