@@ -234,9 +234,20 @@ transitionRules config ai unstable testing general pi =
                 let (hard,easy) = partition (`IxS.member` hasConflictInDeps pi) disjunction,
                 let deps = map (genIndex . fromJustNote "X" . indexInst ai . Inst forI) hard ++
                            map genIndex easy
+            ] ++
+            [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
+                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                forI `IxS.member` hasBadConflictInDeps pi,
+                binI <- IxS.toList binIs,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
+                (disjunction, reason) <- conflicts pi IxM.! binI,
+                confl <- disjunction,
+                confl `IxS.member` binIs,
+                let conflI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ confl
             ]
                          | otherwise = []
-        conflictClauses =
+        conflictClauses | fullDependencies config = []
+                        | otherwise = 
             {-# SCC "conflictClauses" #-}
             -- Conflicts
             [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
