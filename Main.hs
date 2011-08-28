@@ -50,7 +50,11 @@ allArches = map (Arch . BS.pack) $ words
 
 openH "-" = return (Just stdout)
 openH filename = do
-    catch (Just <$> openFile filename WriteMode) $ \e -> do
+    catch ( do
+            h <- openFile filename WriteMode
+            hSetBuffering h LineBuffering
+            return (Just h)
+        ) $ \e -> do
         hPutStrLn stderr $ "Error: Couldn't open " ++ filename ++ " for writing:\n" ++ show e
         exitFailure
 
@@ -172,9 +176,9 @@ runBritney config = do
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        hPrint h $ nest 4 (vcat (map (pp ai) rulesT))
+        mapM_ (hPrint h . nest 4 . pp ai) rulesT
         hPutStrLn h ""
-        hPrint h $ nest 4 (vcat (map (pp ai) relaxable))
+        mapM_ (hPrint h . nest 4 . pp ai) relaxable
         hFlush h
 
     
@@ -204,7 +208,7 @@ runBritney config = do
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
-        hPrint h $ nest 4 (vcat (map (pp ai) cleanedRules))
+        mapM_ (hPrint h . nest 4 . pp ai) cleanedRules
         hFlush h
 
     {-
