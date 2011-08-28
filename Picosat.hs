@@ -161,7 +161,6 @@ relaxer relaxable cnf = do
             case ret of
                 Left mus -> do
                     hPutStrLn stderr $ "Non-relaxable clauses are not satisfiable"
-                    L.hPut stderr $ formatCNF mus
                     return (Left mus)
                 Right _ -> do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
