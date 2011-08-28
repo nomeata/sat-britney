@@ -44,7 +44,7 @@ instance PP Atom where
     pp ai (InstAtom (Inst f p)) = pp ai p <> char '@' <> pp ai f
     pp _ a = text (show a)
 
-instance PP (Index a) where pp ai@(_,m,_) (Index i) = pp ai (m ! i)
+instance PP (Index a) where pp ai i = pp ai $ ai `lookupAny` i 
 
 listSep :: Doc -> Doc -> [Doc] -> Doc
 listSep sep1 sep2 = go
