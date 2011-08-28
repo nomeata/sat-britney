@@ -28,18 +28,18 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
     { sources = sources'
     , binaries = binaries'
     , atoms = atoms'
-    , sourceNames = M.map (filter (`IxS.member` sources')) $ sourceNames suite
-    , binaryNames = M.map (filter (`IxS.member` binaries')) $ binaryNames suite
-    , builds = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $ builds suite
-    , newerSources = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $
+    , sourceNames =  M.map (filter (`IxS.member` sources'))  $ sourceNames suite
+    , binaryNames =  M.map (filter (`IxS.member` binaries')) $ binaryNames suite
+    , builds =       filterKeySrc $ builds suite
+    , newerSources = filterKeySrc $
                      IxM.map (filter (`IxS.member` sources')) $ newerSources suite
-    , bugs = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') $ bugs suite
+    , bugs =         filterKeyAtoms $ bugs suite
     }, RawPackageInfo
-    { providesR = M.map (filter (`IxS.member` binaries')) $ providesR rawPackageInfo
-    , breaksR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ breaksR rawPackageInfo
-    , builtByR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ builtByR rawPackageInfo
-    , dependsR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ dependsR rawPackageInfo
-    , conflictsR = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ conflictsR rawPackageInfo
+    { providesR =    M.map (filter (`IxS.member` binaries')) $ providesR rawPackageInfo
+    , breaksR =      filterKeyBin $ breaksR rawPackageInfo
+    , builtByR =     filterKeyBin $ builtByR rawPackageInfo
+    , dependsR =     filterKeyBin $ dependsR rawPackageInfo
+    , conflictsR =   filterKeyBin $ conflictsR rawPackageInfo
     , binaryNamesR = M.map (filter (`IxS.member` binaries')) $ binaryNamesR rawPackageInfo
     })
   where sources' = IxS.filter (not . isTooYoung) $ sources suite
@@ -51,6 +51,10 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
                                 urgencies general `combine` minAges config $ src
                         in  age <= minAge
             Nothing -> False
+
+        filterKeyBin = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') 
+        filterKeySrc = IxM.filterWithKey (\k _ -> k `IxS.member` sources') 
+        filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
 
 resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
