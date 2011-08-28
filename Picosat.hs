@@ -125,7 +125,7 @@ runPicosat cnf = do
         "s UNSATISFIABLE" -> do
             hClose hout
             musString <- BS.hGetContents coreIn
-            ensureSuccess picoProc procHandle
+            ensureSuccess [10,20] picoProc procHandle
             let mus = parseCNF (snd cnf) musString
             let annotatedMus = findConj mus cnf
             return (Left annotatedMus)
@@ -141,7 +141,7 @@ runPicosat cnf = do
             let vars = case concatMap BS.words ls of 
                  ints@(_:_) | last ints == BS.pack "0" -> int <$> init ints
                  _ -> error $ "Cannot parse picosat SAT output: " ++ BS.unpack satvarsS
-            ensureSuccess picoProc procHandle
+            ensureSuccess [10,20] picoProc procHandle
             return (Right vars)
         s -> do
             error $ "Cannot parse picostat status output: " ++ s
@@ -295,30 +295,32 @@ runAPMAXSolver cmd cnf desired =
             lines
     case slines of 
         []      -> do
-            ensureSuccess proc procHandle
+            ensureSuccess [] proc procHandle
             error $ "PMAX-SAT solver returned no \"s\"-line."
         (_:_:_) -> do
             error $ "PMAX-SAT solver returned more than one \"s\"-line." ++ 
                     BS.unpack (BS.unlines slines)
         [sline] | sline == "s UNSATISFIABLE" -> do
             hClose hout
-            ensureSuccess proc procHandle
+            ensureSuccess [] proc procHandle
             return Nothing
                 | sline == "s OPTIMUM FOUND" -> do
             let vars = case concatMap (BS.words . BS.drop 2) vlines of 
                  ints@(_:_) -> filter (/= 0) . fmap int $ ints
                  _ -> error $ "Cannot parse pmaxsatsolver assignment output: " ++
                               BS.unpack (BS.unlines slines)
-            ensureSuccess proc procHandle
+            ensureSuccess [] proc procHandle
             return (Just vars)
                 | otherwise -> do
             error $ "Cannot parse pmaxsatsolver status output: " ++ BS.unpack sline
   
-ensureSuccess proc procHandle = do
+ensureSuccess alsoOk proc procHandle = do
     ec <- waitForProcess procHandle
     case ec of
         ExitSuccess -> return ()
+        ExitFailure c | c `elem` alsoOk -> return ()
         ExitFailure c -> error $ "Command \"" ++ showCmdSpec (cmdspec proc) ++
+         
             "\" failed with error code " ++ show c
 
 showCmdSpec (ShellCommand cmd) = cmd
