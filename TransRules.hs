@@ -164,8 +164,9 @@ reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $
                     x1 <- IxS.toList x1S
                ]
 
-generateInstallabilityAtoms :: PackageInfo -> AtomIndex -> AtomIndex
-generateInstallabilityAtoms pi ai =
+generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
+generateInstallabilityAtoms config pi ai =
+    if not (fullDependencies config) then ai else
     foldl' (\ai (p,s) -> 
         foldl' (\ ai d -> fst (ai `addInst` Inst p d)) ai (IxS.toList s)
     ) ai $

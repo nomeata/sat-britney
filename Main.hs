@@ -167,7 +167,7 @@ runBritney config = do
     hPutStrLn stderr $ "Same, but with always installable packages removed:         " ++ show 
         (IxM.fold ((+) . IxS.size) 0 $ dependsBadHull pi)
 
-    let ai = generateInstallabilityAtoms pi ai3
+    let ai = generateInstallabilityAtoms config pi ai3
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
