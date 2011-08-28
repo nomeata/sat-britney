@@ -244,6 +244,12 @@ transitionRules config ai unstable testing general pi =
                 confl <- disjunction,
                 confl `IxS.member` binIs,
                 let conflI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ confl
+            ] ++
+            [ Implies instI [genIndex binI] "the package needs to be present" |
+                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                forI `IxS.member` hasBadConflictInDeps pi,
+                binI <- IxS.toList binIs,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
             ]
                          | otherwise = []
         conflictClauses | fullDependencies config = []
