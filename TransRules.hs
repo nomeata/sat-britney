@@ -19,6 +19,7 @@ import Debug.Trace
 import Safe
 
 import Types
+import AtomIndex
 import LitSat
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM

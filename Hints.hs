@@ -12,6 +12,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 
 import Types
 import Indices
+import AtomIndex
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 

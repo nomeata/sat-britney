@@ -11,6 +11,7 @@ import Data.IntMap ((!))
 import Types
 import Indices
 import LitSat
+import AtomIndex
 
 class PP a where pp :: AtomIndex -> a -> Doc
 

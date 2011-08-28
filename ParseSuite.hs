@@ -24,6 +24,7 @@ import Control.Arrow (first)
 
 import ControlParser
 import Types
+import AtomIndex
 import Indices
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS

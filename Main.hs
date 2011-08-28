@@ -31,6 +31,7 @@ import Picosat
 import LitSat
 import Hints
 import Indices
+import AtomIndex
 
 minAgeTable = M.fromList [
     (Urgency "low", Age 10), 
