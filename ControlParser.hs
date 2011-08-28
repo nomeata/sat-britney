@@ -18,6 +18,7 @@ data Para = Para
     , versionField :: !BS.ByteString
     , architectureField :: !BS.ByteString
     , dependsField :: !BS.ByteString
+    , preDependsField :: !BS.ByteString
     , providesField :: !BS.ByteString
     , conflictsField :: !BS.ByteString
     , breaksField :: !BS.ByteString
@@ -26,7 +27,7 @@ data Para = Para
     deriving (Eq, Show)
 
 emptyPara :: Para
-emptyPara = Para BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty
+emptyPara = Para BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty
 
 parseControlFile :: FilePath -> IO [Para]
 parseControlFile filename = parseLines . BS.lines <$> BS.readFile filename
@@ -48,6 +49,7 @@ addField l para =
     if n == "Version"      then para { versionField = v } else
     if n == "Architecture" then para { architectureField = v } else
     if n == "Depends"      then para { dependsField = v } else
+    if n == "Pre-Depends"  then para { preDependsField = v } else
     if n == "Provides"     then para { providesField = v } else
     if n == "Conflicts"    then para { conflictsField = v } else
     if n == "Breaks"       then para { breaksField = v } else
