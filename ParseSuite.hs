@@ -60,7 +60,7 @@ parseSuite config ai dir = do
         readPara ai (Para {..}:ps) =
                     ( binI:bins
                     , binNamesEntries ++ binNames
-                    , (binI,depends):deps
+                    , (binI,depends++preDepends):deps
                     , provides ++ provs
                     , (binI,conflicts):confls
                     , (binI,breaks):brks
@@ -77,6 +77,7 @@ parseSuite config ai dir = do
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
                 depends = parseDependency $ dependsField
+                preDepends = parseDependency $ preDependsField
                 conflicts = parseDependency $ conflictsField
                 breaks = parseDependency $ breaksField
                 provides = [
