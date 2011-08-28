@@ -161,10 +161,11 @@ reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $
 
 generateInstallabilityAtoms :: PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms pi ai =
-    IxM.foldWithKey
-        (\p s ai -> IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s) ai $
-        IxM.filterWithKey (\k _ -> k `IxS.member` hasBadConflictInDeps pi) $
-        dependsHull pi
+    foldr (\p -> maybe id
+        (\s ai -> foldr (\d -> fst . (`addInst` Inst p d)) ai (IxS.toList s))
+        (IxM.lookup p (dependsHull pi))
+    ) ai $
+    IxS.toList (hasConflictInDeps pi)
 
 
 transitionRules
