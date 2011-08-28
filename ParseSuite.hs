@@ -100,7 +100,7 @@ parseSuite config ai dir = do
 
     let depends = {-# SCC "depends" #-} IxM.fromList binaryDepends
 
-    let provides = {-# SCC "provides" #-} M.fromList binaryProvides
+    let provides = {-# SCC "provides" #-} M.fromListWith (++) binaryProvides
 
     let conflicts = {-# SCC "conflicts" #-} IxM.fromList binaryConflicts
 
