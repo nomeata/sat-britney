@@ -74,6 +74,11 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         dependsHull = transitiveHull dependsRel
 
+        dependsBadHull = transitiveHull $
+            IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
+            IxM.filterWithKey (\k _ -> k `IxS.member` hasConflictInDeps) $
+            dependsRel
+
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
                         (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
