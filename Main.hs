@@ -30,6 +30,7 @@ import ClauseSat
 import Picosat
 import LitSat
 import Hints
+import Indices
 
 minAgeTable = M.fromList [
     (Urgency "low", Age 10), 
@@ -136,6 +137,8 @@ runBritney config = do
     (unstableFull, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, testingRPI, ai3)  <- parseSuite config ai2 (dir config </> "testing")
 
+    hPutStrLn stderr $ "AtomIndex knows about " ++ show (unIndex (maxIndex ai3)) ++ " atoms."
+
     config <- case migrateThis config of
         Nothing -> return config
         Just atom -> case ai3 `indexAtom` atom of 
@@ -152,8 +155,12 @@ runBritney config = do
 
     hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxS.size (hasBadConflictInDeps pi)) ++ " have bad conflicts."
 
-    let (rules, relaxable, desired, unwanted, ai) =
-            transitionRules config ai3 unstableThin testing general pi
+    let ai = generateInstallabilityAtoms pi ai3
+
+    hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
+
+    let (rules, relaxable, desired, unwanted) =
+            transitionRules config ai unstableThin testing general pi
         rulesT = map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
                  rules

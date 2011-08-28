@@ -158,22 +158,24 @@ reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $
                     x1 <- IxS.toList x1S
                ]
 
+generateInstallabilityAtoms :: PackageInfo -> AtomIndex -> AtomIndex
+generateInstallabilityAtoms pi ai =
+    IxM.foldWithKey
+        (\p s ai -> IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s) ai $
+        IxM.filterWithKey (\k _ -> k `IxS.member` hasBadConflictInDeps pi) $
+        dependsHull pi
+
+
 transitionRules
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
-     -> ([Clause AtomI], [Clause AtomI], [AtomI], [AtomI], AtomIndex)
+     -> ([Clause AtomI], [Clause AtomI], [AtomI], [AtomI])
 transitionRules config ai unstable testing general pi =
     ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependencies
     , conflictClauses ++ softDependencies
     , desired
     , unwanted
-    , ai'
     )
-  where ai' = IxM.foldWithKey
-                (\p s ai -> IxS.fold (\d -> fst . (`addInst` Inst p d)) ai s) ai $
-                -- IxM.filterWithKey (\k _ -> k `IxS.member` hasBadConflictInDeps pi) $
-                dependsHull pi
-        
-        keepSrc = 
+  where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
@@ -199,7 +201,7 @@ transitionRules config ai unstable testing general pi =
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxS.toList binariesUnion,
                 forI `IxS.member` hasBadConflictInDeps pi,
-                let instI = genIndex . fromJustNote "Z" . indexInst ai' . Inst forI $ forI
+                let instI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ forI
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
@@ -221,9 +223,9 @@ transitionRules config ai unstable testing general pi =
                 (forI,binIs) <- IxM.toList (dependsHull pi),
                 forI `IxS.member` hasBadConflictInDeps pi,
                 binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai' . Inst forI $ binI,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
                 (disjunction, reason) <- depends pi IxM.! binI,
-                let deps = map (genIndex . fromJustNote "X" . indexInst ai' . Inst forI) disjunction
+                let deps = map (genIndex . fromJustNote "X" . indexInst ai . Inst forI) disjunction
             ]
                          | otherwise = []
         conflictClauses =
