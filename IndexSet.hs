@@ -6,8 +6,10 @@ import Data.Functor
 import Control.DeepSeq
 import Unsafe.Coerce
 
-import qualified Data.IntSet as S
+import qualified Data.DenseIntSet as S
 import Indices
+
+instance NFData S.IntSet
 
 newtype Set a = IndexSet { unIndexSet :: S.IntSet }
   deriving (NFData, Show)

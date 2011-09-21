@@ -10,6 +10,8 @@ import qualified Data.IntMap as M
 import qualified IndexSet as IxS
 import Indices
 
+instance NFData a => NFData (M.IntMap a) where rnf m = rnf (M.toList m)
+
 newtype Map a b = IndexMap { unIndexMap :: M.IntMap b }
   deriving (NFData, Show)
 
@@ -42,7 +44,8 @@ unionsWith ::  (b -> b -> b) -> [Map t b] -> Map a b
 unionsWith f = IndexMap . M.unionsWith f . Prelude.map unIndexMap
 
 keysSet :: Map t b -> IxS.Set t
-keysSet (IndexMap m) = IxS.IndexSet $ M.keysSet m
+keysSet (IndexMap m) = IxS.fromDistinctAscList $ Prelude.map Index $ M.keys m
+
 
 size :: Map t a -> Int
 size (IndexMap s) = M.size s
