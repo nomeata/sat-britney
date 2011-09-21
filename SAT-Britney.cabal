@@ -13,7 +13,7 @@ Cabal-version:       >=1.6
 Executable SAT-Britney
   Main-is: Main.hs
 
-  ghc-options: -rtsopts -with-rtsopts -K83886080
+  ghc-options: -rtsopts -with-rtsopts "-K83886080 -t"
 
   ld-options: -static -pthread
 
