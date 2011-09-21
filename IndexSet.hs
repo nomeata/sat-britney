@@ -9,6 +9,10 @@ import Unsafe.Coerce
 import qualified Data.DenseIntSet as S
 import Indices
 
+import Prelude hiding ( foldr )
+
+import GHC.Exts ( build )
+
 instance NFData S.IntSet
 
 newtype Set a = IndexSet { unIndexSet :: S.IntSet }
@@ -56,6 +60,10 @@ toList (IndexSet m1) = Index <$> S.toList m1
 toAscList :: Set a -> [Index a]
 toAscList (IndexSet m1) = Index <$> S.toAscList m1
 
+{-# RULES "IndexSet/toList" forall is . toList is = build (\c n -> foldr c n is) #-}
+{-# RULES "IndexSet/toAscList" forall is . toList is = build (\c n -> foldr c n is) #-}
+
+
 fromList :: [Index a] -> Set a
 fromList l = IndexSet $ S.fromList (unIndex <$> l)
 
@@ -67,6 +75,9 @@ filter f (IndexSet s) = IndexSet $ S.filter (f . Index) s
 
 fold :: (Index a -> b -> b) -> b -> Set a -> b
 fold f x (IndexSet s) = S.fold (\i x' -> f (Index i) x') x s
+
+foldr :: (Index a -> b -> b) -> b -> Set a -> b
+foldr f x (IndexSet s) = S.foldr (\i x' -> f (Index i) x') x s
 
 generalize :: Set a -> Set b
 -- generalize (IndexSet s) = IndexSet $ S.mapMonotonic (\(Index i) -> Index i)

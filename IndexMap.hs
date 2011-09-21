@@ -10,6 +10,8 @@ import qualified Data.IntMap as M
 import qualified IndexSet as IxS
 import Indices
 
+import GHC.Exts ( build )
+
 instance NFData a => NFData (M.IntMap a) where rnf m = rnf (M.toList m)
 
 newtype Map a b = IndexMap { unIndexMap :: M.IntMap b }
@@ -61,6 +63,8 @@ keys (IndexMap m1) = Index <$> M.keys m1
 
 toList :: Map t d -> [(Index a, d)]
 toList (IndexMap m1) = first Index <$> M.toList m1
+
+{-# RULES "IndexMap/toList" forall m . toList m = build (\c n -> foldWithKey (\k x xs -> c (k,x) xs) n m) #-}
 
 fromListWith :: (b -> b -> b) -> [(Index a1, b)] -> Map a b
 fromListWith f l = IndexMap $ M.fromListWith f (first unIndex <$> l)
