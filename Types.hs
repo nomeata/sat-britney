@@ -201,7 +201,8 @@ data PackageInfo = PackageInfo {
     conflictsRel :: IxM.Map Binary (IxS.Set Binary),
     hasConflict :: IxS.Set Binary,
     hasConflictInDeps :: IxS.Set Binary,
-    hasBadConflictInDeps :: IxS.Set Binary
+    hasBadConflictInDeps :: IxS.Set Binary,
+    hasReallyBadConflictInDeps :: IxS.Set Binary
 }
     deriving (Show)
 

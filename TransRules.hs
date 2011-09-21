@@ -74,9 +74,10 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         dependsHull = transitiveHull dependsRel
 
-        dependsBadHull = transitiveHull $
+        dependsBadHull = 
+            IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps) $
+            transitiveHull $
             IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
-            IxM.filterWithKey (\k _ -> k `IxS.member` hasConflictInDeps) $
             dependsRel
 
         conflicts = IxM.unionWith (++)
@@ -121,6 +122,17 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                         IxS.toList deps 
             in  not $ IxS.null $ other `IxS.intersection` deps
 
+        hasReallyBadConflictInDeps = flip IxS.filter hasBadConflictInDeps $ \p -> 
+            not $ null [ ()
+                | ((d1,_),(d2,_)) <- allPairs (depends IxM.! p)
+                , let deps1 = IxS.unions $ mapMaybe (`IxM.lookup` dependsHull) d1
+                      deps2 = IxS.unions $ mapMaybe (`IxM.lookup` dependsHull) d2
+                      other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                      other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
+                , not $ IxS.null $ other1 `IxS.intersection` deps2
+                , not $ IxS.null $ other2 `IxS.intersection` deps1 -- Obsolete by symmetry?
+                ]
+                    
         binaryNamesUnion = M.unionsWith (++) (map binaryNamesR rawPackageInfos)
 
         providesUnion = M.unionsWith (++) (map providesR rawPackageInfos)
@@ -148,6 +160,10 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                 checkArchReq ST.Nothing = True
                 checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
                 checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
+
+allPairs :: [a] -> [(a,a)]
+allPairs [] = []
+allPairs (x:xs) = [ (x,y) | y <- xs ] ++ allPairs xs
 
 -- Could be implemented better
 transitiveHull rel = IxM.fromList $
@@ -207,12 +223,12 @@ transitionRules config ai unstable testing general pi =
         softDependencies | fullDependencies config =
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxS.toList binariesUnion,
-                forI `IxS.member` hasBadConflictInDeps pi,
+                forI `IxS.member` hasReallyBadConflictInDeps pi,
                 let instI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ forI
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
-                binI `IxS.notMember` hasBadConflictInDeps pi,
+                binI `IxS.notMember` hasReallyBadConflictInDeps pi,
                 (disjunction, reason) <- depends,
                 let deps = map genIndex disjunction
             ]
@@ -228,7 +244,6 @@ transitionRules config ai unstable testing general pi =
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                forI `IxS.member` hasBadConflictInDeps pi,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
                 (disjunction, reason) <- depends pi IxM.! binI,
@@ -238,7 +253,6 @@ transitionRules config ai unstable testing general pi =
             ] ++
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                forI `IxS.member` hasBadConflictInDeps pi,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
                 (disjunction, reason) <- conflicts pi IxM.! binI,
@@ -248,7 +262,6 @@ transitionRules config ai unstable testing general pi =
             ] ++
             [ Implies instI [genIndex binI] "the package needs to be present" |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                forI `IxS.member` hasBadConflictInDeps pi,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
             ]

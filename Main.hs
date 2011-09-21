@@ -159,10 +159,10 @@ runBritney config = do
 
     let pi = resolvePackageInfo config ai3 [testingRPI, unstableThinRPI]
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxS.size (hasBadConflictInDeps pi)) ++ " have bad conflicts."
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxS.size (hasBadConflictInDeps pi)) ++ " have bad conflicts and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
 
     hPutStrLn stderr $ "Size of dependency hulls of packages with bad dependencies: " ++ show 
-        (IxM.fold ((+) . IxS.size) 0 $ IxM.filterWithKey (\k _ -> k `IxS.member` hasBadConflictInDeps pi) (dependsHull pi))
+        (IxM.fold ((+) . IxS.size) 0 $ IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps pi) (dependsHull pi))
 
     hPutStrLn stderr $ "Same, but with always installable packages removed:         " ++ show 
         (IxM.fold ((+) . IxS.size) 0 $ dependsBadHull pi)
