@@ -202,12 +202,12 @@ transitionRules config ai unstable testing general pi =
     , desired
     , unwanted
     )
-    else 
+    else error "unsupported" {-
     ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
     , toProducer $ conflictClauses ++ softDependenciesNonFull
     , desired
     , unwanted
-    )
+    ) -}
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
