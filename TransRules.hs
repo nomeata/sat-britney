@@ -196,8 +196,15 @@ transitionRules
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
      -> (Producer (Clause AtomI), Producer (Clause AtomI), [AtomI], [AtomI])
 transitionRules config ai unstable testing general pi =
-    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependencies
-    , toProducer $ conflictClauses ++ softDependencies
+    if fullDependencies config then
+    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependenciesFull
+    , toProducer $ conflictClauses ++ softDependenciesFull
+    , desired
+    , unwanted
+    )
+    else 
+    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
+    , toProducer $ conflictClauses ++ softDependenciesNonFull
     , desired
     , unwanted
     )
@@ -223,7 +230,7 @@ transitionRules config ai unstable testing general pi =
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
             ]
-        softDependencies | fullDependencies config =
+        softDependenciesFull =
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxS.toList binariesUnion,
                 forI `IxS.member` hasReallyBadConflictInDeps pi,
@@ -235,14 +242,14 @@ transitionRules config ai unstable testing general pi =
                 (disjunction, reason) <- depends,
                 let deps = map genIndex disjunction
             ]
-                         | otherwise = 
+        softDependenciesNonFull =
             -- Any package needs to be installable
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
                 (disjunction, reason) <- depends,
                 let deps = map genIndex disjunction
             ]
-        hardDependencies | fullDependencies config =
+        hardDependenciesFull =
             {-# SCC "dependencies" #-}
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
@@ -268,7 +275,6 @@ transitionRules config ai unstable testing general pi =
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
             ]
-                         | otherwise = []
         conflictClauses | fullDependencies config = []
                         | otherwise = 
             {-# SCC "conflictClauses" #-}
