@@ -72,7 +72,7 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         revDependsRel = reverseRel dependsRel
 
-        dependsHull = transitiveHull dependsRel
+        -- dependsHull = transitiveHull dependsRel
 
         dependsBadHull = 
             IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps) $
@@ -116,7 +116,7 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                     in  go (new' `IxS.difference` cid') cid'
 
         hasBadConflictInDeps = flip IxS.filter hasConflictInDeps $ \p -> 
-            let deps  = IxM.findWithDefault IxS.empty p dependsHull
+            let deps  = transitiveHull1 dependsRel p
                 other = IxS.unions $
                         mapMaybe (`IxM.lookup` conflictsRel) $
                         IxS.toList deps 
@@ -125,8 +125,8 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
         hasReallyBadConflictInDeps = flip IxS.filter hasBadConflictInDeps $ \p -> 
             not $ null [ ()
                 | ((d1,_),(d2,_)) <- allPairs (depends IxM.! p)
-                , let deps1 = IxS.unions $ mapMaybe (`IxM.lookup` dependsHull) d1
-                      deps2 = IxS.unions $ mapMaybe (`IxM.lookup` dependsHull) d2
+                , let deps1 = IxS.unions $ map (transitiveHull1 dependsRel) d1
+                      deps2 = IxS.unions $ map (transitiveHull1 dependsRel) d1
                       other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
                       other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
                 , not $ IxS.null $ other1 `IxS.intersection` deps2
@@ -166,8 +166,9 @@ allPairs [] = []
 allPairs (x:xs) = [ (x,y) | y <- xs ] ++ allPairs xs
 
 -- Could be implemented better
-transitiveHull rel = IxM.fromList $
-    [ (p,d) | (p,_) <- IxM.toList rel, let d = execState (deps p) IxS.empty ]
+transitiveHull rel = IxM.fromList $ [ (p,transitiveHull1 rel p) | (p,_) <- IxM.toList rel]
+
+transitiveHull1 rel x = execState (deps x) IxS.empty
   where deps d = do
             ex <- gets (d `IxS.member`)
             unless ex $ do
