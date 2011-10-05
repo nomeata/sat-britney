@@ -193,23 +193,25 @@ runBritney config = do
 
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
-    removeClauseE <- runRelaxer (maxIndex ai) relaxableClauses cnfT
-    removeClause <- case removeClauseE of
-        Left mus -> do
+    removeClauseE <- relaxer relaxableClauses cnfT
+    leftConj <- case removeClauseE of
+        Left musCNF -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
-            hPrint stderr $ nest 4 (vcat (map (pp ai) mus))
+            let mus = cnf2Clauses relaxable musCNF 
+            hPrint stderr $ nest 4 (vcat (map (pp ai) (build mus)))
             exitFailure
-        Right removeClause -> do
-            hPutStrLn stderr $ show (length removeClause) ++ " clauses are removed to make testing conform"
+        Right (leftConj,removeConjs) -> do
+            hPutStrLn stderr $ show (length (fst removeConjs)) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
-                hPrint h $ nest 4 (vcat (map (pp ai) removeClause))
+                let removeClause = cnf2Clauses relaxable removeConjs 
+                hPrint h $ nest 4 (vcat (map (pp ai) (build removeClause)))
                 hFlush h
-            return removeClause
+            return leftConj
 
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
-        cleanedRules = toProducer $ extraRules ++ build rules ++ (build relaxable `removeRelated` removeClause)
-        cnf = clauses2CNF (maxIndex ai) cleanedRules
+        cleanedRules = toProducer $ extraRules ++ build rules
+        cnf = clauses2CNF (maxIndex ai) cleanedRules `combineCNF` leftConj
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
@@ -238,13 +240,14 @@ runBritney config = do
         else fmap (\res -> (res,[res])) <$>
              runClauseSAT (maxIndex ai) desired' unwanted' cnf
     case result of 
-        Left clauses -> do
+        Left musCNF -> do
             hPutStrLn stderr $
                 "No suitable set of packages could be determined, " ++
                 "because the following requirements conflict:"
+            let mus = cnf2Clauses relaxable musCNF 
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
-            print (nest 4 (vcat (map (pp ai) clauses)))
+            print (nest 4 (vcat (map (pp ai) (build mus))))
         Right (newAtomIs,smallTransitions) -> do
             mbDo (differenceH config) $ \h -> do
                 let newAtoms = S.map (ai `lookupAtom`) newAtomIs
