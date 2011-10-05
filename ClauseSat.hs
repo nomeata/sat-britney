@@ -29,26 +29,37 @@ allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 -}
 
 clauses2CNF :: AtomI -> Producer (Clause AtomI) -> CNF
-clauses2CNF (Index mv) clauses = (concatMap clause2CNF $ build clauses, mv)
+clauses2CNF (Index mv) clauses = (clauses (\c -> augment (clause2CNF c)) [], mv)
 
-clause2CNF :: Clause AtomI -> [Conj]
-clause2CNF c@(OneOf as _) = [ atoms2Conj ais ]
+clause2CNF :: Clause AtomI -> Producer Conj
+clause2CNF c@(OneOf as _) = toProducer
+                                [ atoms2Conj ais ]
     where ais = [ unIndex a | a <- as ]
-clause2CNF c@(AtMostOne as _) = [ atoms2Conj [-ai1, -ai2]
+
+clause2CNF c@(AtMostOne as _) = toProducer
+                                [ atoms2Conj [-ai1, -ai2]
                                 | ai1 <- ais , ai2 <- ais , ai1 /= ai2 ]
     where ais = [ unIndex a | a <- as ]
-clause2CNF c@(AllOrNone as _) = [ atoms2Conj [-unIndex a1, unIndex a2]
+
+clause2CNF c@(AllOrNone as _) = toProducer
+                                [ atoms2Conj [-unIndex a1, unIndex a2]
                                 | (a1,a2) <- zip as (tail (cycle as))]
-clause2CNF c@(Implies a as _) = [ atoms2Conj (-ai: ais) ]
+
+clause2CNF c@(Implies a as _) = toProducer
+                                [ atoms2Conj (-ai: ais) ]
     where ai = unIndex a
           ais = [ unIndex a | a <- as ]
-clause2CNF c@(NotBoth a1 a2 _) = [ atoms2Conj [- unIndex a1, - unIndex a2 ] ]
-clause2CNF c@(Not a _) = [ atom2Conj (-ai) ]
+
+clause2CNF c@(NotBoth a1 a2 _) = toProducer
+                                [ atoms2Conj [- unIndex a1, - unIndex a2 ] ]
+
+clause2CNF c@(Not a _) = toProducer
+                                [ atom2Conj (-ai) ]
     where ai = unIndex a
 
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
 cnf2Clauses clauses (conj,_) = toProducer $ filter check $ build clauses
-  where check c = any (`S.member` conjS) $ clause2CNF c
+  where check c = any (`S.member` conjS) $ build (clause2CNF c)
         conjS = S.fromList conj
 
 runClauseSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF -> IO (Either CNF (S.Set AtomI))
