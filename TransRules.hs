@@ -70,15 +70,17 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                      IxM.map (IxS.fromList . concatMap fst) $
                      depends
 
+        dependsRelWithConflicts = IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
+                                  dependsRel
+
         revDependsRel = reverseRel dependsRel
 
         -- dependsHull = transitiveHull dependsRel
 
-        dependsBadHull = 
-            IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps) $
-            transitiveHull $
-            IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
-            dependsRel
+        dependsBadHull = IxM.fromList
+                [ (p,transitiveHull1 dependsRelWithConflicts p)
+                | (p,_) <- IxM.toList dependsRelWithConflicts
+                , p `IxS.member` hasReallyBadConflictInDeps]
 
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
