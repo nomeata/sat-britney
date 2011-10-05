@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, Rank2Types, ImpredicativeTypes #-}
 -- |
 -- Module: TransRules
 -- Copyright: (c) 2011 Joachim Breitner
@@ -188,13 +188,17 @@ generateInstallabilityAtoms config pi ai =
     ) ai $
     IxM.toList (dependsBadHull pi)
 
+type Producer a = forall b. (a -> b -> b) -> b -> b
+
+toProducer l f x = foldr f x l
+{-# INLINE toProducer #-}
 
 transitionRules
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
-     -> ([Clause AtomI], [Clause AtomI], [AtomI], [AtomI])
+     -> (Producer (Clause AtomI), Producer (Clause AtomI), [AtomI], [AtomI])
 transitionRules config ai unstable testing general pi =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependencies
-    , conflictClauses ++ softDependencies
+    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependencies
+    , toProducer $ conflictClauses ++ softDependencies
     , desired
     , unwanted
     )

@@ -19,6 +19,7 @@ import System.Console.GetOpt
 import System.Exit
 import Data.Functor
 import Data.Maybe
+import GHC.Exts ( augment, build ) 
 
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
@@ -173,20 +174,21 @@ runBritney config = do
 
     let (rules, relaxable, desired, unwanted) =
             transitionRules config ai unstableThin testing general pi
-        rulesT = map (\i -> Not i "we are investigating testing") desired ++
+        rulesT = toProducer $
+                 map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
-                 rules
-        cnfT = clauses2CNF (maxIndex ai) rulesT
-        relaxableClauses = clauses2CNF (maxIndex ai) relaxable
+                 build rules
+        cnfT = clauses2CNF (maxIndex ai) (build rulesT)
+        relaxableClauses = clauses2CNF (maxIndex ai) (build relaxable)
 
-    hPutStrLn stderr $ "Constructed " ++ show (length rulesT) ++ " hard and " ++
-        show (length relaxable) ++ " soft clauses."
+    hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
+        show (length (build relaxable)) ++ " soft clauses."
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp ai) rulesT
+        mapM_ (hPrint h . nest 4 . pp ai) (build rulesT)
         hPutStrLn h ""
-        mapM_ (hPrint h . nest 4 . pp ai) relaxable
+        mapM_ (hPrint h . nest 4 . pp ai) (build relaxable)
         hFlush h
 
     
@@ -206,8 +208,8 @@ runBritney config = do
 
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
-        cleanedRules = extraRules ++ rules ++ (relaxable `removeRelated` removeClause)
-        cnf = clauses2CNF (maxIndex ai) cleanedRules
+        cleanedRules = toProducer $ extraRules ++ build rules ++ (build relaxable `removeRelated` removeClause)
+        cnf = clauses2CNF (maxIndex ai) (build cleanedRules)
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
@@ -216,7 +218,7 @@ runBritney config = do
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp ai) cleanedRules
+        mapM_ (hPrint h . nest 4 . pp ai) (build cleanedRules)
         hFlush h
 
     {-
