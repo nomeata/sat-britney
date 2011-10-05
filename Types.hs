@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, ImpredicativeTypes #-}
 
 -- |
 -- Module: Types
@@ -238,6 +238,12 @@ data Config = Config
     , migrateThis :: Maybe Atom
     , migrateThisI :: Maybe AtomI
     }
+
+-- List fusion helper
+type Producer a = forall b. (a -> b -> b) -> b -> b
+
+toProducer l f x = foldr f x l
+{-# INLINE toProducer #-}
 
 mbDo Nothing _ = return ()
 mbDo (Just x) f = f x

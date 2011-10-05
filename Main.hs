@@ -178,8 +178,8 @@ runBritney config = do
                  map (\i -> Not i "we are investigating testing") desired ++
                  map (\i -> OneOf [i] "we are investigating testing") unwanted ++
                  build rules
-        cnfT = clauses2CNF (maxIndex ai) (build rulesT)
-        relaxableClauses = clauses2CNF (maxIndex ai) (build relaxable)
+        cnfT = clauses2CNF (maxIndex ai) rulesT
+        relaxableClauses = clauses2CNF (maxIndex ai) relaxable
 
     hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
         show (length (build relaxable)) ++ " soft clauses."
@@ -209,7 +209,7 @@ runBritney config = do
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
         cleanedRules = toProducer $ extraRules ++ build rules ++ (build relaxable `removeRelated` removeClause)
-        cnf = clauses2CNF (maxIndex ai) (build cleanedRules)
+        cnf = clauses2CNF (maxIndex ai) cleanedRules
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"

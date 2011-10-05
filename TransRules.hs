@@ -188,10 +188,6 @@ generateInstallabilityAtoms config pi ai =
     ) ai $
     IxM.toList (dependsBadHull pi)
 
-type Producer a = forall b. (a -> b -> b) -> b -> b
-
-toProducer l f x = foldr f x l
-{-# INLINE toProducer #-}
 
 transitionRules
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo

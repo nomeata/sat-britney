@@ -1,3 +1,5 @@
+{-# LANGUAGE Rank2Types #-}
+
 -- |
 -- Module: ClauseSat
 -- Copyright: (c) 2011 Joachim Breitner
@@ -11,6 +13,7 @@ import LitSat
 import Picosat
 import Types
 import Indices
+import GHC.Exts ( augment, build ) 
 
 {-
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
@@ -25,8 +28,8 @@ allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 -}
 
-clauses2CNF :: AtomI -> [Clause AtomI] -> CNF (Clause AtomI)
-clauses2CNF (Index mv) clauses = (concatMap clause2CNF clauses, mv)
+clauses2CNF :: AtomI -> Producer (Clause AtomI) -> CNF (Clause AtomI)
+clauses2CNF (Index mv) clauses = (concatMap clause2CNF $ build clauses, mv)
 
 clause2CNF :: Clause AtomI -> [Conj (Clause AtomI)]
 clause2CNF c@(OneOf as _) = [ atoms2Conj c ais ]
