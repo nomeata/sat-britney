@@ -133,6 +133,12 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                       other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
                 , not $ IxS.null $ other1 `IxS.intersection` deps2
                 , not $ IxS.null $ other2 `IxS.intersection` deps1 -- Obsolete by symmetry?
+                ] && null
+                [ ()
+                | (d1,_) <- depends IxM.! p
+                , let deps1 = IxS.unions $ map (transitiveHull1 dependsRel) d1
+                      other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                , not $ p `IxS.member` other1
                 ]
                     
         binaryNamesUnion = M.unionsWith (++) (map binaryNamesR rawPackageInfos)
