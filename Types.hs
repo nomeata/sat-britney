@@ -245,5 +245,13 @@ type Producer a = forall b. (a -> b -> b) -> b -> b
 toProducer l f x = foldr f x l
 {-# INLINE toProducer #-}
 
+mapP :: (a -> b) -> Producer a -> Producer b
+mapP f p c n = p (\x ys -> c (f x) ys) n
+{-# INLINE mapP #-}
+
+concatP :: Producer a -> Producer a -> Producer a
+concatP p1 p2 c n = p1 c (p2 c n)
+{-# INLINE concatP #-}
+
 mbDo Nothing _ = return ()
 mbDo (Just x) f = f x

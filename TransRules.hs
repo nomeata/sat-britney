@@ -191,16 +191,55 @@ generateInstallabilityAtoms config pi ai =
     ) ai $
     IxM.toList (dependsBadHull pi)
 
-
-transitionRules
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
-     -> (Producer (Clause AtomI), Producer (Clause AtomI), [AtomI], [AtomI])
+-- Wrapper around transitionRules' that prevents sharing. We _want_ to
+-- recalculate the rules everytime 'build' is called upon the producer.
+transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+     -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
 transitionRules config ai unstable testing general pi =
+    ( hardTransitionRules config ai unstable testing general pi 
+    , softTransitionRules config ai unstable testing general pi 
+    , desiredAtoms config ai unstable testing general pi 
+    , unwantedAtoms config ai unstable testing general pi 
+    )
+
+hardTransitionRules 
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+     -> Producer (Clause AtomI)
+hardTransitionRules config ai unstable testing general pi f x =
+    let (r,_,_,_) = transitionRules' config ai unstable testing general pi
+    in r f x
+
+softTransitionRules 
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+     -> Producer (Clause AtomI)
+softTransitionRules config ai unstable testing general pi f x =
+    let (_,r,_,_) = transitionRules' config ai unstable testing general pi
+    in r f x
+
+desiredAtoms 
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+      -> Producer AtomI
+desiredAtoms config ai unstable testing general pi f x =
+    let (_,_,a,_) = transitionRules' config ai unstable testing general pi
+    in a f x
+
+unwantedAtoms 
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+      -> Producer AtomI
+unwantedAtoms config ai unstable testing general pi f x =
+    let (_,_,_,a) = transitionRules' config ai unstable testing general pi
+    in a f x
+
+
+transitionRules'
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+     -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
+transitionRules' config ai unstable testing general pi =
     if fullDependencies config then
     ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependenciesFull
     , toProducer $ conflictClauses ++ softDependenciesFull
-    , desired
-    , unwanted
+    , toProducer $ desired
+    , toProducer $ unwanted
     )
     else error "unsupported" {-
     ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy

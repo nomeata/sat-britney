@@ -172,12 +172,11 @@ runBritney config = do
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
-    let (rules, relaxable, desired, unwanted) =
-            transitionRules config ai unstableThin testing general pi
-        rulesT = toProducer $
-                 map (\i -> Not i "we are investigating testing") desired ++
-                 map (\i -> OneOf [i] "we are investigating testing") unwanted ++
-                 build rules
+    let (rules, relaxable, desired, unwanted)
+            = transitionRules config ai unstableThin testing general pi
+        rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
+                 mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
+                 rules
         cnfT = clauses2CNF (maxIndex ai) rulesT
         relaxableClauses = clauses2CNF (maxIndex ai) relaxable
 
@@ -186,11 +185,10 @@ runBritney config = do
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp ai) (build rulesT)
+        mapM_ (hPrint h . nest 4 . pp ai) (build rules)
         hPutStrLn h ""
         mapM_ (hPrint h . nest 4 . pp ai) (build relaxable)
         hFlush h
-
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
     removeClauseE <- relaxer relaxableClauses cnfT
@@ -210,7 +208,7 @@ runBritney config = do
 
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
-        cleanedRules = toProducer $ extraRules ++ build rules
+        cleanedRules = toProducer extraRules `concatP` rules
         cnf = clauses2CNF (maxIndex ai) cleanedRules `combineCNF` leftConj
 
     mbDo (dimacsH config) $ \h -> do
@@ -221,6 +219,7 @@ runBritney config = do
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
         mapM_ (hPrint h . nest 4 . pp ai) (build cleanedRules)
+        -- TODO what about clauses from leftConf?
         hFlush h
 
     {-
@@ -232,13 +231,13 @@ runBritney config = do
             AsLargeAsPossible -> (desired, unwanted)
             ManySmall         -> (desired, unwanted)
             AsSmallAsPossible -> (unwanted, desired)
-            AnySize           -> ([], [])
+            AnySize           -> (toProducer [], toProducer [])
 
     hPutStrLn stderr $ "Running main picosat run"
     result <- if transSize config == ManySmall
-        then runClauseMINMAXSAT (maxIndex ai) desired' unwanted' cnf
+        then runClauseMINMAXSAT (maxIndex ai) (build desired') (build unwanted') cnf
         else fmap (\res -> (res,[res])) <$>
-             runClauseSAT (maxIndex ai) desired' unwanted' cnf
+             runClauseSAT (maxIndex ai) (build desired') (build unwanted') cnf
     case result of 
         Left musCNF -> do
             hPutStrLn stderr $

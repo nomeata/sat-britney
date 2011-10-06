@@ -133,8 +133,8 @@ runPicosat cnf = do
             musString <- BS.hGetContents coreIn
             ensureSuccess [10,20] picoProc procHandle
             let mus = parseCNF (snd cnf) musString
-            let annotatedMus = findConj mus cnf
-            return (Left annotatedMus)
+            --let annotatedMus = findConj mus cnf
+            return (Left mus)
         "s SATISFIABLE" -> do
             hClose coreIn
             satvarsS <- BS.hGetContents hout
