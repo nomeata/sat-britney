@@ -32,6 +32,7 @@ Index x `notMember` IndexSet s = x `S.notMember` s
 
 member :: Index a -> Set a -> Bool
 Index x `member` IndexSet s = x `S.member` s
+{-# INLINE member #-}
 
 size :: Set a -> Int
 size (IndexSet s) = S.size s
