@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, Rank2Types, ImpredicativeTypes #-}
+{-# LANGUAGE RecordWildCards, Rank2Types, ImpredicativeTypes, TupleSections #-}
 -- |
 -- Module: TransRules
 -- Copyright: (c) 2011 Joachim Breitner
@@ -251,10 +251,9 @@ reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $
                ]
 
 restrictRel :: IxM.Map a (IxS.Set a) -> IxS.Set a -> IxM.Map a (IxS.Set a)
-restrictRel rel set = 
-    flip IxM.mapMaybeWithKey rel $ \k s ->
-        let s' = IxS.filter (`IxS.member` set) s
-        in if k `IxS.member` set && not (IxS.null s') then Just s' else Nothing
+restrictRel rel set = IxM.fromAscList $
+    flip mapMaybe (IxS.toAscList set) $ \k ->
+        (k,) . IxS.filter (`IxS.member` set) <$> IxM.lookup k rel
 
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =

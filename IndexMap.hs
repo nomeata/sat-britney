@@ -72,6 +72,9 @@ fromListWith f l = IndexMap $ M.fromListWith f (first unIndex <$> l)
 fromList :: [(Index a1, b)] -> Map a b
 fromList l = IndexMap $ M.fromList (first unIndex <$> l)
 
+fromAscList :: [(Index a1, b)] -> Map a b
+fromAscList l = IndexMap $ M.fromAscList (first unIndex <$> l)
+
 fromDistinctAscList :: [(Index a1, b)] -> Map a b
 fromDistinctAscList l = IndexMap $ M.fromDistinctAscList (first unIndex <$> l)
 
