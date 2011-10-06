@@ -219,7 +219,7 @@ runBritney config = do
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
         mapM_ (hPrint h . nest 4 . pp ai) (build cleanedRules)
-        -- TODO what about clauses from leftConf?
+        mapM_ (hPrint h . nest 4 . pp ai) (build (cnf2Clauses relaxable leftConj))
         hFlush h
 
     {-
