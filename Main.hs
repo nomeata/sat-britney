@@ -154,11 +154,13 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai3
 
+    {-
     let (unstableThin, unstableThinRPI) = thinSuite config unstableFull unstableRPI general
     hPutStrLn stderr $ "Thinning unstable to " ++ show (IxS.size (sources unstableThin)) ++
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
+    -}
 
-    let pi = resolvePackageInfo config ai3 [testingRPI, unstableThinRPI]
+    let pi = resolvePackageInfo config ai3 [testingRPI, unstableRPI]
 
     hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
 
@@ -173,7 +175,7 @@ runBritney config = do
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
     let (rules, relaxable, desired, unwanted)
-            = transitionRules config ai unstableThin testing general pi
+            = transitionRules config ai unstableFull testing general pi
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  rules
@@ -259,7 +261,7 @@ runBritney config = do
 
             mbDo (hintsH config) $ \h -> do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints ai testing unstableThin pi thisTransitionNewAtomsIs
+                    L.hPut h $ generateHints ai testing unstableFull pi thisTransitionNewAtomsIs
                 hFlush h
 
     hPutStrLn stderr $ "Done"
