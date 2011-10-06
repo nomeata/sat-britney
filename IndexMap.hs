@@ -90,6 +90,9 @@ map f (IndexMap m) = IndexMap $ M.map f m
 mapWithKey :: (Index t -> a1 -> b) -> Map t a1 -> Map t b
 mapWithKey f (IndexMap m) = IndexMap $ M.mapWithKey (\i v -> f (Index i) v) m
 
+mapMaybeWithKey :: (Index t -> a1 -> Maybe b) -> Map t a1 -> Map t b
+mapMaybeWithKey f (IndexMap m) = IndexMap $ M.mapMaybeWithKey (\i v -> f (Index i) v) m
+
 foldWithKey :: (Index t -> a -> b -> b) -> b -> Map t a -> b
 foldWithKey f x (IndexMap m) = M.foldWithKey (\i v x' -> f (Index i) v x') x m
 

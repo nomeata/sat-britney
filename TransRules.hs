@@ -21,6 +21,7 @@ import Safe
 import Types
 import AtomIndex
 import LitSat
+import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
@@ -77,10 +78,70 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         -- dependsHull = transitiveHull dependsRel
 
+        {-
         dependsBadHull = IxM.fromList
                 [ (p,transitiveHull1 dependsRelWithConflicts p)
                 | (p,_) <- IxM.toList dependsRelWithConflicts
                 , p `IxS.member` hasReallyBadConflictInDeps]
+        -}
+
+        relevantConflicts = 
+            IxM.filter (not . S.null) $
+            flip IxM.mapWithKey dependsRelWithConflicts $
+                \p deps -> S.fromList $
+                    [ (c1,c2)
+                    | (deps1,deps2) <- allPairs $
+                        IxS.singleton p :
+                        map (transitiveHull1 dependsRelWithConflicts) (IxS.toList deps)
+                    , (c1,c2s) <- IxM.toList conflictsRel
+                    , c1 `IxS.member` deps1
+                    , c2 <- IxS.toList c2s
+                    , c2 `IxS.member` deps2
+                    ]
+
+        dependsRelBad = 
+            IxM.filter (not . IxS.null) $
+            flip IxM.mapWithKey dependsRelWithConflicts $
+                \p deps -> IxS.fromList $
+                    concat [ [d1, d2]
+                    | (d1,d2) <- allPairs (IxS.toList deps)
+                    , let deps1 = transitiveHull1 dependsRelWithConflicts d1
+                          deps2 = transitiveHull1 dependsRelWithConflicts d2
+                          other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                          other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
+                    , not $ IxS.null $ other1 `IxS.intersection` deps2
+                    , not $ IxS.null $ other2 `IxS.intersection` deps1 -- Obsolete by symmetry?
+                    ] ++
+                    [ d1
+                    | d1 <- IxS.toList deps
+                    , let deps1 = transitiveHull1 dependsRelWithConflicts d1
+                          other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                    , p `IxS.member` other1
+                    ]
+
+        {-
+        dependsBadHull = IxM.fromList
+                [ (p,p `IxS.insert` depsHull)
+                | (p,deps) <- IxM.toList dependsRelBad
+                , let depsHull = IxS.unions $
+                        map (transitiveHull1 dependsRelWithConflicts) $
+                        IxS.toList deps
+                , not (IxS.null depsHull)
+                ]
+        -}
+
+        dependsBadHull = IxM.fromListWith IxS.union
+                [ (p,depsHull)
+                | (p,conflicts) <- IxM.toList relevantConflicts
+                , let deps = transitiveHull1 dependsRelWithConflicts p
+                , let revDependsRel' = restrictRel revDependsRel deps
+                , (c1,c2) <- S.toList conflicts
+                , let depsHull =
+                        (transitiveHull1 revDependsRel' c1 `IxS.union`
+                         transitiveHull1 revDependsRel' c2) `IxS.intersection` deps
+                , if p `IxS.member` depsHull then True else error "p not in depsHull"
+                ]
+
 
         conflicts = IxM.unionWith (++)
                     ( IxM.mapWithKey
@@ -128,7 +189,7 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
             not $ null [ ()
                 | ((d1,_),(d2,_)) <- allPairs (depends IxM.! p)
                 , let deps1 = IxS.unions $ map (transitiveHull1 dependsRel) d1
-                      deps2 = IxS.unions $ map (transitiveHull1 dependsRel) d1
+                      deps2 = IxS.unions $ map (transitiveHull1 dependsRel) d2
                       other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
                       other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
                 , not $ IxS.null $ other1 `IxS.intersection` deps2
@@ -188,6 +249,12 @@ reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $
                     (x2,x1S) <- IxM.toList rel,
                     x1 <- IxS.toList x1S
                ]
+
+restrictRel :: IxM.Map a (IxS.Set a) -> IxS.Set a -> IxM.Map a (IxS.Set a)
+restrictRel rel set = 
+    flip IxM.mapMaybeWithKey rel $ \k s ->
+        let s' = IxS.filter (`IxS.member` set) s
+        in if k `IxS.member` set && not (IxS.null s') then Just s' else Nothing
 
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
@@ -278,12 +345,12 @@ transitionRules' config ai unstable testing general pi =
         softDependenciesFull =
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxS.toList binariesUnion,
-                forI `IxS.member` hasReallyBadConflictInDeps pi,
-                let instI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ forI
+                forI `IxM.member` dependsBadHull pi,
+                let instI = genIndex . fromJustNote "X" . indexInst ai . Inst forI $ forI
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
-                binI `IxS.notMember` hasReallyBadConflictInDeps pi,
+                binI `IxM.notMember` dependsBadHull pi,
                 (disjunction, reason) <- depends,
                 let deps = map genIndex disjunction
             ]
@@ -302,9 +369,10 @@ transitionRules' config ai unstable testing general pi =
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
                 (disjunction, reason) <- depends pi IxM.! binI,
-                let (hard,easy) = partition (`IxS.member` hasConflictInDeps pi) disjunction,
-                let deps = map (genIndex . fromJustNote "X" . indexInst ai . Inst forI) hard ++
-                           map genIndex easy
+                let deps = [ case indexInst ai (Inst forI depI) of
+                                Just instI -> genIndex instI
+                                Nothing    -> genIndex depI
+                           | depI <- disjunction ]
             ] ++
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),

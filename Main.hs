@@ -160,7 +160,7 @@ runBritney config = do
 
     let pi = resolvePackageInfo config ai3 [testingRPI, unstableThinRPI]
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxS.size (hasBadConflictInDeps pi)) ++ " have bad conflicts and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
 
     hPutStrLn stderr $ "Size of dependency hulls of packages with bad dependencies: " 
         -- ++ show (IxM.fold ((+) . IxS.size) 0 $ IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps pi) (dependsHull pi))
@@ -243,7 +243,7 @@ runBritney config = do
             hPutStrLn stderr $
                 "No suitable set of packages could be determined, " ++
                 "because the following requirements conflict:"
-            let mus = cnf2Clauses relaxable musCNF 
+            let mus = cnf2Clauses (cleanedRules `concatP` relaxable) musCNF 
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map (pp ai) (build mus))))
