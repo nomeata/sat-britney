@@ -62,65 +62,66 @@ resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
         
-        depends = IxM.mapWithKey 
+        depends = {-# SCC "depends" #-} IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
                               in map $ first $ nub . concatMap (resolveDep arch))
                     (IxM.unions (map dependsR rawPackageInfos))
 
-        dependsRel = IxM.filter (not . IxS.null) $
+        dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
                      IxM.map (IxS.fromList . concatMap fst) $
                      depends
 
-        dependsRelWithConflicts = IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
+        dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-} IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
                                   dependsRel
 
-        revDependsRel = reverseRel dependsRel
+        revDependsRel = {-# SCC "revDependsRel" #-} reverseRel dependsRel
 
         -- dependsHull = transitiveHull dependsRel
 
         {-
-        dependsBadHull = IxM.fromList
+        dependsBadHull = {-# SCC "dependsBadHull" #-} IxM.fromList
                 [ (p,transitiveHull1 dependsRelWithConflicts p)
                 | (p,_) <- IxM.toList dependsRelWithConflicts
                 , p `IxS.member` hasReallyBadConflictInDeps]
         -}
 
-        relevantConflicts = 
+        relevantConflicts = {-# SCC "relevantConflicts" #-} 
             IxM.filter (not . S.null) $
             flip IxM.mapWithKey dependsRelWithConflicts $
                 \p deps -> S.fromList $
                     [ (c1,c2)
-                    | (deps1,deps2) <- allPairs $
+                    | (deps1,deps2s) <- allPairs' $
                         IxS.singleton p :
                         map (transitiveHull1 dependsRelWithConflicts) (IxS.toList deps)
                     , (c1,c2s) <- IxM.toList conflictsRel
                     , c1 `IxS.member` deps1
+                    , deps2 <- deps2s
                     , c2 <- IxS.toList c2s
                     , c2 `IxS.member` deps2
                     ]
 
-        dependsRelBad = 
+        dependsRelBad = {-# SCC "dependsRelBad" #-} 
             IxM.filter (not . IxS.null) $
             flip IxM.mapWithKey dependsRelWithConflicts $
                 \p deps -> IxS.fromList $
                     concat [ [d1, d2]
                     | (d1,d2) <- allPairs (IxS.toList deps)
                     , let deps1 = transitiveHull1 dependsRelWithConflicts d1
-                          deps2 = transitiveHull1 dependsRelWithConflicts d2
-                          other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
-                          other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
+                          deps2 = {-# SCC "deps2" #-} transitiveHull1 dependsRelWithConflicts d2
+                          other1 = {-# SCC "other1" #-} IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                          other2 = {-# SCC "other2" #-} IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
                     , not $ IxS.null $ other1 `IxS.intersection` deps2
                     , not $ IxS.null $ other2 `IxS.intersection` deps1 -- Obsolete by symmetry?
                     ] ++
                     [ d1
                     | d1 <- IxS.toList deps
                     , let deps1 = transitiveHull1 dependsRelWithConflicts d1
-                          other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                          other1 = {-# SCC "other1" #-} IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
                     , p `IxS.member` other1
                     ]
 
         {-
-        dependsBadHull = IxM.fromList
+        dependsBadHull = {-# SCC "dependsBadHull" #-} IxM.fromList
                 [ (p,p `IxS.insert` depsHull)
                 | (p,deps) <- IxM.toList dependsRelBad
                 , let depsHull = IxS.unions $
@@ -130,7 +131,7 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                 ]
         -}
 
-        dependsBadHull = IxM.fromListWith IxS.union
+        dependsBadHull = {-# SCC "dependsBadHull" #-} IxM.fromListWith IxS.union
                 [ (p,depsHull)
                 | (p,conflicts) <- IxM.toList relevantConflicts
                 , let deps = transitiveHull1 dependsRelWithConflicts p
@@ -143,7 +144,7 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                 ]
 
 
-        conflicts = IxM.unionWith (++)
+        conflicts = {-# SCC "conflicts" #-} IxM.unionWith (++)
                     ( IxM.mapWithKey
                         (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
                                   in map $ first $ nub . concatMap (resolveConf pkg arch)
@@ -158,53 +159,53 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                         (IxM.unions (map breaksR rawPackageInfos))
                     )
 
-        depRelHasUpperBound (DepRel _ (ST.Just vr) _ ) = hasUpperBound vr
-        depRelHasUpperBound _ = False
+        depRelHasUpperBound (DepRel _ (ST.Just vr) _ ) = {-# SCC "depRelHasUpperBound" #-} hasUpperBound vr
+        depRelHasUpperBound _ = {-# SCC "depRelHasUpperBound" #-} False
 
         flatConflicts :: IxM.Map Binary (IxS.Set Binary)
-        flatConflicts = IxM.filter (not . IxS.null) $
+        flatConflicts = {-# SCC "flatConflicts" #-} IxM.filter (not . IxS.null) $
                         IxM.map (IxS.fromList . concatMap fst) $
                         conflicts
 
         conflictsRel :: IxM.Map Binary (IxS.Set Binary)
-        conflictsRel = IxM.unionWith (IxS.union) flatConflicts (reverseRel flatConflicts)
+        conflictsRel = {-# SCC "conflictsRel" #-} IxM.unionWith (IxS.union) flatConflicts (reverseRel flatConflicts)
 
-        hasConflict = IxM.keysSet conflictsRel
+        hasConflict = {-# SCC "hasConflict" #-} IxM.keysSet conflictsRel
 
-        hasConflictInDeps = go hasConflict IxS.empty
-          where go new cid | IxS.null new = cid
+        hasConflictInDeps = {-# SCC "hasConflictInDeps" #-} go hasConflict IxS.empty
+          where go new cid | IxS.null new = {-# SCC "where" #-} cid
                            | otherwise = 
-                    let new' = IxS.unions $ mapMaybe (`IxM.lookup` revDependsRel) $ IxS.toList new
-                        cid' = cid `IxS.union` new
+                    let new' = {-# SCC "let" #-} IxS.unions $ mapMaybe (`IxM.lookup` revDependsRel) $ IxS.toList new
+                        cid' = {-# SCC "cid" #-} cid `IxS.union` new
                     in  go (new' `IxS.difference` cid') cid'
 
-        hasBadConflictInDeps = flip IxS.filter hasConflictInDeps $ \p -> 
-            let deps  = transitiveHull1 dependsRel p
-                other = IxS.unions $
+        hasBadConflictInDeps = {-# SCC "hasBadConflictInDeps" #-} flip IxS.filter hasConflictInDeps $ \p -> 
+            let deps  = {-# SCC "let" #-} transitiveHull1 dependsRel p
+                other = {-# SCC "other" #-} IxS.unions $
                         mapMaybe (`IxM.lookup` conflictsRel) $
                         IxS.toList deps 
             in  not $ IxS.null $ other `IxS.intersection` deps
 
-        hasReallyBadConflictInDeps = flip IxS.filter hasBadConflictInDeps $ \p -> 
+        hasReallyBadConflictInDeps = {-# SCC "hasReallyBadConflictInDeps" #-} flip IxS.filter hasBadConflictInDeps $ \p -> 
             not $ null [ ()
                 | ((d1,_),(d2,_)) <- allPairs (depends IxM.! p)
                 , let deps1 = IxS.unions $ map (transitiveHull1 dependsRel) d1
-                      deps2 = IxS.unions $ map (transitiveHull1 dependsRel) d2
-                      other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
-                      other2 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
+                      deps2 = {-# SCC "deps2" #-} IxS.unions $ map (transitiveHull1 dependsRel) d2
+                      other1 = {-# SCC "other1" #-} IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                      other2 = {-# SCC "other2" #-} IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps2
                 , not $ IxS.null $ other1 `IxS.intersection` deps2
                 , not $ IxS.null $ other2 `IxS.intersection` deps1 -- Obsolete by symmetry?
                 ] && null
                 [ ()
                 | (d1,_) <- depends IxM.! p
                 , let deps1 = IxS.unions $ map (transitiveHull1 dependsRel) d1
-                      other1 = IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
+                      other1 = {-# SCC "other1" #-} IxS.unions $ mapMaybe (`IxM.lookup` conflictsRel) $ IxS.toList deps1
                 , not $ p `IxS.member` other1
                 ]
                     
-        binaryNamesUnion = M.unionsWith (++) (map binaryNamesR rawPackageInfos)
+        binaryNamesUnion = {-# SCC "binaryNamesUnion" #-} M.unionsWith (++) (map binaryNamesR rawPackageInfos)
 
-        providesUnion = M.unionsWith (++) (map providesR rawPackageInfos)
+        providesUnion = {-# SCC "providesUnion" #-} M.unionsWith (++) (map providesR rawPackageInfos)
 
         resolveDep  = resolve Nothing
         resolveConf = resolve . Just 
@@ -233,6 +234,10 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 allPairs :: [a] -> [(a,a)]
 allPairs [] = []
 allPairs (x:xs) = [ (x,y) | y <- xs ] ++ allPairs xs
+
+allPairs' :: [a] -> [(a,[a])]
+allPairs' [] = []
+allPairs' (x:xs) = (x,xs) : allPairs' xs
 
 -- Could be implemented better
 transitiveHull rel = IxM.fromList $ [ (p,transitiveHull1 rel p) | (p,_) <- IxM.toList rel]
