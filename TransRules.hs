@@ -138,8 +138,8 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                 , let revDependsRel' = restrictRel revDependsRel deps
                 , (c1,c2) <- S.toList conflicts
                 , let depsHull =
-                        (transitiveHull1 revDependsRel' c1 `IxS.union`
-                         transitiveHull1 revDependsRel' c2) `IxS.intersection` deps
+                        (transitiveHull1 revDependsRel' c1 `IxS.intersection` deps) `IxS.union`
+                        (transitiveHull1 revDependsRel' c2 `IxS.intersection` deps)
                 , if p `IxS.member` depsHull then True else error "p not in depsHull"
                 ]
 
