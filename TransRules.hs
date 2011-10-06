@@ -237,7 +237,7 @@ transitionRules'
 transitionRules' config ai unstable testing general pi =
     if fullDependencies config then
     ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependenciesFull
-    , toProducer $ conflictClauses ++ softDependenciesFull
+    , toProducer $ softDependenciesFull
     , toProducer $ desired
     , toProducer $ unwanted
     )
@@ -314,8 +314,7 @@ transitionRules' config ai unstable testing general pi =
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
             ]
-        conflictClauses | fullDependencies config = []
-                        | otherwise = 
+        conflictClauses =
             {-# SCC "conflictClauses" #-}
             -- Conflicts
             [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
