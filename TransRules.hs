@@ -59,14 +59,21 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
         filterKeySrc = IxM.filterWithKey (\k _ -> k `IxS.member` sources') 
         filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
 
-resolvePackageInfo :: Config -> AtomIndex -> [RawPackageInfo] -> PackageInfo
-resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
+
+resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Atom -> [RawPackageInfo] -> PackageInfo
+resolvePackageInfo config ai nonCandidates rawPackageInfos = PackageInfo{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
         
         depends = {-# SCC "depends" #-} IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
-                              in map $ first $ nub . concatMap (resolveDep arch))
-                    (IxM.unions (map dependsR rawPackageInfos))
+                              in map $ first $
+                                filter ((`IxS.notMember` nonCandidates) . genIndex) .
+                                nub .
+                                concatMap (resolveDep arch)
+                    ) $
+                    IxM.unions $
+                    map (IxM.filterWithKey (\k v -> k `IxS.notMember` nonCandidates)) $
+                    map dependsR rawPackageInfos
 
         dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
                      IxM.map (IxS.fromList . concatMap fst) $
@@ -284,6 +291,43 @@ generateInstallabilityAtoms config pi ai =
         foldl' (\ ai d -> fst (ai `addInst` Inst p d)) ai (IxS.toList s)
     ) ai $
     IxM.toList (dependsBadHull pi)
+
+-- Sources and binaries that will not be in testing, in any case. Can be used
+-- to skip certain things, most notable generating the dependency information.
+findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+    -> Producer (AtomI, String)
+findNonCandidates config ai unstable testing general pi f x =
+    (toProducer $ outdated ++ obsolete ++ tooyoung) f x
+  where tooyoung = 
+            {-# SCC "tooyoung" #-}
+            -- packages need to be old enough
+            [ (genIndex src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
+                src <- IxM.keys buildsOnlyUnstable,
+                Just age <- [src `M.lookup` ages general],
+                let minAge = fromMaybe (defaultMinAge config) $
+                             urgencies general `combine` minAges config $ src,
+                age <= minAge
+            ] 
+        outdated = 
+            {-# SCC "outdated" #-}
+            -- release architectures ought not to be out of date
+            [ (genIndex newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
+                binI <- IxS.toList (binaries unstable),
+                let srcI = builtBy pi IxM.! binI,
+                -- TODO: only release architecture here
+                newer <- newerSources unstable IxM.! srcI,
+                newer `IxS.notMember` sources testing
+            ]
+        obsolete = 
+            {-# SCC "obsolete" #-}
+            -- never add a source package to testing that is already superceded
+            [ (genIndex src, "it is already superceded by " ++ show (ai `lookupSrc` s)) |
+                (src, bins) <- IxM.toList buildsOnlyUnstable,
+                (s:_) <- [newerSources unstable IxM.! src]
+            ]
+
+        buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
+
 
 -- Wrapper around transitionRules' that prevents sharing. We _want_ to
 -- recalculate the rules everytime 'build' is called upon the producer.

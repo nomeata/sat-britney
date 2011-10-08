@@ -160,7 +160,12 @@ runBritney config = do
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
     -}
 
-    let pi = resolvePackageInfo config ai3 [testingRPI, unstableRPI]
+    let pi = resolvePackageInfo config ai3 nonCandidateSet [testingRPI, unstableRPI]
+        nonCandidates :: Producer (AtomI, String)
+        nonCandidates = findNonCandidates config ai3 unstableFull testing general pi
+        nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
+
+    hPutStrLn stderr $ "In unstable, " ++ show (IxS.size nonCandidateSet) ++ " atoms are not candidates."
 
     hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
 
