@@ -7,6 +7,8 @@
 module ParseSuite where
 
 import System.FilePath
+import System.Directory
+import System.Time
 import Data.Functor
 import qualified Data.Map as M
 import Text.Parsec
@@ -17,6 +19,7 @@ import Data.ByteString.Nums.Careless
 import qualified Data.Strict as ST
 import System.IO
 import Data.Time
+import Data.DateTime ( fromClockTime )
 import Data.Char
 import Data.Function
 import Control.DeepSeq
@@ -185,7 +188,7 @@ parseGeneralInfo config ai = do
     -- of a source package, we remove it. Removing the index of something that
     -- is not a source pacackge is a noop.
     ages <- maybe id (M.delete . (\(Index i) -> Index i)) (migrateThisI config) <$>
-        parseAgeFile (dir config </> "testing" </> "Dates") ai
+        parseAgeFile config  ai
 --    ages `deepseq` return ()
 
 
@@ -207,12 +210,15 @@ parseUrgencyFile file ai = do
             let urgency = Urgency urgencyS
             ]
 
-parseAgeFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Age)
-parseAgeFile file ai = do
-    dateS <- BS.readFile file
+parseAgeFile :: Config -> AtomIndex -> IO (M.Map SrcI Age)
+parseAgeFile config ai = do
+    let filename = dir config </> "testing" </> "Dates"
+    dateS <- BS.readFile filename
 
     -- Timeszone?
-    now <- utctDay <$> getCurrentTime
+    now <- case True of -- whether to use file timestamp for "now"
+        True -> utctDay . fromClockTime <$> getModificationTime filename
+        False -> utctDay <$> getCurrentTime
     let epochDay = fromGregorian 1970 1 1
     return $ M.fromList [ (srcI, Age age) | 
             line <- BS.lines dateS,

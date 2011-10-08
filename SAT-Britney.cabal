@@ -26,12 +26,14 @@ Executable SAT-Britney
         , process
         , pretty
         , time
+        , old-time
         , parsec >= 3.1
         , filepath
         , Cabal
         , safe
 
         , unix
+        , datetime
         , bytestring-nums
         , strict
         , deepseq
