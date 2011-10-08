@@ -71,8 +71,8 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
                      IxM.map (IxS.fromList . concatMap fst) $
                      depends
 
-        dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-} IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) $
-                                  dependsRel
+        dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-}
+            IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) dependsRel
 
         revDependsRel = {-# SCC "revDependsRel" #-} reverseRel dependsRel
 
@@ -87,12 +87,16 @@ resolvePackageInfo config ai rawPackageInfos = PackageInfo{..}
 
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
             IxM.filter (not . S.null) $
-            flip IxM.mapWithKey dependsRelWithConflicts $
+            flip IxM.mapWithKey depends $
                 \p deps -> S.fromList $
                     [ (c1,c2)
                     | (deps1,deps2s) <- allPairs' $
-                        IxS.singleton p :
-                        map (transitiveHull1 dependsRelWithConflicts) (IxS.toList deps)
+                        IxS.singleton p : map (
+                            IxS.unions .
+                            map (transitiveHull1 dependsRelWithConflicts) .
+                            filter (`IxS.member` hasConflictInDeps) .
+                            fst
+                        ) deps
                     , (c1,c2s) <- IxM.toList conflictsRel
                     , c1 `IxS.member` deps1
                     , deps2 <- deps2s
