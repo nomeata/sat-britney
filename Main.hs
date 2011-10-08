@@ -19,6 +19,7 @@ import System.Console.GetOpt
 import System.Exit
 import Data.Functor
 import Data.Maybe
+import Data.List
 import GHC.Exts ( augment, build ) 
 
 import qualified IndexSet as IxS
@@ -166,6 +167,9 @@ runBritney config = do
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
 
     hPutStrLn stderr $ "In unstable, " ++ show (IxS.size nonCandidateSet) ++ " atoms are not candidates."
+
+    mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
+        hPutStrLn stderr $ "ERROR: " ++ show (pp ai3 atom) ++ " is a non-candidate in testin!"
 
     hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
 
