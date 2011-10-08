@@ -18,6 +18,7 @@ import Control.Monad.State
 import Debug.Trace
 import Safe
 
+import Indices
 import Types
 import AtomIndex
 import LitSat
@@ -244,14 +245,26 @@ allPairs' [] = []
 allPairs' (x:xs) = (x,xs) : allPairs' xs
 
 -- Could be implemented better
+transitiveHull ::  IxM.Map a1 (IxS.Set a1) -> IxM.Map a (IxS.Set a1)
 transitiveHull rel = IxM.fromList $ [ (p,transitiveHull1 rel p) | (p,_) <- IxM.toList rel]
 
-transitiveHull1 rel x = execState (deps x) IxS.empty
+transitiveHull1 :: IxM.Map a (IxS.Set a) -> Index a -> IxS.Set a
+transitiveHull1 rel x = addTransitiveHull1 rel x IxS.empty
+
+addTransitiveHull1 :: IxM.Map t (IxS.Set t) -> Index t -> IxS.Set t -> IxS.Set t
+addTransitiveHull1 rel x = execState (deps x)
   where deps d = do
             ex <- gets (d `IxS.member`)
             unless ex $ do
                 modify (IxS.insert d)
                 mapM_ deps $ IxS.toList (IxM.findWithDefault IxS.empty d rel)
+
+transitiveHull1s :: IxM.Map t (IxS.Set t) -> [Index t] -> IxS.Set t
+transitiveHull1s rel = foldr (addTransitiveHull1 rel) IxS.empty 
+{-# RULES "unions/transitiveHull1" 
+    forall rel xs . IxS.unions (map (transitiveHull1 rel) xs) = transitiveHull1s rel xs #-}
+{-# RULES "unions/./transitiveHull1" 
+    forall rel . IxS.unions . map (transitiveHull1 rel) = transitiveHull1s rel #-}
 
 reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $ 
                [ (x1, IxS.singleton x2) |
