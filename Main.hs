@@ -161,7 +161,7 @@ runBritney config = do
     -}
 
     let pi = resolvePackageInfo config ai3 nonCandidateSet [testingRPI, unstableRPI]
-        nonCandidates :: Producer (AtomI, String)
+        nonCandidates :: Producer (SrcI, String)
         nonCandidates = findNonCandidates config ai3 unstableFull testing general pi
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
 
@@ -180,7 +180,7 @@ runBritney config = do
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
     let (rules, relaxable, desired, unwanted)
-            = transitionRules config ai unstableFull testing general pi
+            = transitionRules config ai unstableFull testing general pi nonCandidates
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  rules

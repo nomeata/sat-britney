@@ -17,6 +17,7 @@ import Control.Arrow ((&&&), first)
 import Control.Monad.State
 import Debug.Trace
 import Safe
+import GHC.Exts (build)
 
 import Indices
 import Types
@@ -60,19 +61,21 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
         filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
 
 
-resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Atom -> [RawPackageInfo] -> PackageInfo
+resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai nonCandidates rawPackageInfos = PackageInfo{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
         
         depends = {-# SCC "depends" #-} IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
                               in map $ first $
-                                filter ((`IxS.notMember` nonCandidates) . genIndex) .
+                                filter ((`IxS.notMember` nonCandidates) . (builtBy IxM.!)) .
                                 nub .
                                 concatMap (resolveDep arch)
                     ) $
                     IxM.unions $
-                    map (IxM.filterWithKey (\k v -> k `IxS.notMember` nonCandidates)) $
+                    map (IxM.filterWithKey $ \k v -> 
+                            (builtBy IxM.! k) `IxS.notMember` nonCandidates
+                        ) $
                     map dependsR rawPackageInfos
 
         dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
@@ -295,13 +298,13 @@ generateInstallabilityAtoms config pi ai =
 -- Sources and binaries that will not be in testing, in any case. Can be used
 -- to skip certain things, most notable generating the dependency information.
 findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
-    -> Producer (AtomI, String)
+    -> Producer (SrcI, String)
 findNonCandidates config ai unstable testing general pi f x =
     (toProducer $ outdated ++ obsolete ++ tooyoung) f x
   where tooyoung = 
             {-# SCC "tooyoung" #-}
             -- packages need to be old enough
-            [ (genIndex src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
+            [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
                 src <- IxM.keys buildsOnlyUnstable,
                 Just age <- [src `M.lookup` ages general],
                 let minAge = fromMaybe (defaultMinAge config) $
@@ -311,7 +314,7 @@ findNonCandidates config ai unstable testing general pi f x =
         outdated = 
             {-# SCC "outdated" #-}
             -- release architectures ought not to be out of date
-            [ (genIndex newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
+            [ (newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
                 binI <- IxS.toList (binaries unstable),
                 let srcI = builtBy pi IxM.! binI,
                 -- TODO: only release architecture here
@@ -321,7 +324,7 @@ findNonCandidates config ai unstable testing general pi f x =
         obsolete = 
             {-# SCC "obsolete" #-}
             -- never add a source package to testing that is already superceded
-            [ (genIndex src, "it is already superceded by " ++ show (ai `lookupSrc` s)) |
+            [ (src, "it is already superceded by " ++ show (ai `lookupSrc` s)) |
                 (src, bins) <- IxM.toList buildsOnlyUnstable,
                 (s:_) <- [newerSources unstable IxM.! src]
             ]
@@ -331,50 +334,50 @@ findNonCandidates config ai unstable testing general pi f x =
 
 -- Wrapper around transitionRules' that prevents sharing. We _want_ to
 -- recalculate the rules everytime 'build' is called upon the producer.
-transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
      -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
-transitionRules config ai unstable testing general pi =
-    ( hardTransitionRules config ai unstable testing general pi 
-    , softTransitionRules config ai unstable testing general pi 
-    , desiredAtoms config ai unstable testing general pi 
-    , unwantedAtoms config ai unstable testing general pi 
+transitionRules config ai unstable testing general pi nc =
+    ( hardTransitionRules config ai unstable testing general pi nc 
+    , softTransitionRules config ai unstable testing general pi nc 
+    , desiredAtoms config ai unstable testing general pi nc 
+    , unwantedAtoms config ai unstable testing general pi nc 
     )
 
 hardTransitionRules 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-hardTransitionRules config ai unstable testing general pi f x =
-    let (r,_,_,_) = transitionRules' config ai unstable testing general pi
+hardTransitionRules config ai unstable testing general pi nc f x =
+    let (r,_,_,_) = transitionRules' config ai unstable testing general pi nc
     in r f x
 
 softTransitionRules 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-softTransitionRules config ai unstable testing general pi f x =
-    let (_,r,_,_) = transitionRules' config ai unstable testing general pi
+softTransitionRules config ai unstable testing general pi nc f x =
+    let (_,r,_,_) = transitionRules' config ai unstable testing general pi nc
     in r f x
 
 desiredAtoms 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
       -> Producer AtomI
-desiredAtoms config ai unstable testing general pi f x =
-    let (_,_,a,_) = transitionRules' config ai unstable testing general pi
+desiredAtoms config ai unstable testing general pi nc f x =
+    let (_,_,a,_) = transitionRules' config ai unstable testing general pi nc
     in a f x
 
 unwantedAtoms 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
       -> Producer AtomI
-unwantedAtoms config ai unstable testing general pi f x =
-    let (_,_,_,a) = transitionRules' config ai unstable testing general pi
+unwantedAtoms config ai unstable testing general pi nc f x =
+    let (_,_,_,a) = transitionRules' config ai unstable testing general pi nc
     in a f x
 
 
 transitionRules'
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
      -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
-transitionRules' config ai unstable testing general pi =
+transitionRules' config ai unstable testing general pi nc =
     if fullDependencies config then
-    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy ++ hardDependenciesFull
+    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ++ hardDependenciesFull
     , toProducer $ softDependenciesFull
     , toProducer $ desired
     , toProducer $ unwanted
@@ -490,16 +493,6 @@ transitionRules' config ai unstable testing general pi =
                 let binIs = map (genIndex . fst) binGroup
             ]
 
-        tooyoung = 
-            {-# SCC "tooyoung" #-}
-            -- packages need to be old enough
-            [Not (genIndex src) ("it is " ++ show age ++ " days old, needs " ++ show minAge) |
-                src <- IxM.keys buildsOnlyUnstable,
-                Just age <- [src `M.lookup` ages general],
-                let minAge = fromMaybe (defaultMinAge config) $
-                             urgencies general `combine` minAges config $ src,
-                age <= minAge
-            ] 
         needsSource = 
             {-# SCC "needsSource" #-}
             -- a package needs its source
@@ -513,22 +506,9 @@ transitionRules' config ai unstable testing general pi =
                 (src, binIs) <- IxM.toList buildsUnion,
                 let bins = map genIndex (nub binIs)
             ]
-        outdated = 
-            {-# SCC "outdated" #-}
-            -- release architectures ought not to be out of date
-            [Not (genIndex newer) ("is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
-                binI <- IxS.toList (binaries unstable),
-                let srcI = builtBy pi IxM.! binI,
-                -- TODO: only release architecture here
-                newer <- newerSources unstable IxM.! srcI,
-                newer `IxS.notMember` sources testing
-            ]
-        obsolete = 
-            {-# SCC "obsolete" #-}
-            -- never add a source package to testing that is already superceded
-            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` s)) |
-                (src, bins) <- IxM.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable IxM.! src]
+        nonCandidates =
+            [ Not (genIndex atom) reason
+            | (atom, reason) <- build nc
             ]
         buggy = 
             {-# SCC "buggy1" #-}
@@ -583,7 +563,6 @@ transitionRules' config ai unstable testing general pi =
         forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `IxS.difference` bugsInTesting
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
-        atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} IxS.difference (atoms unstable) (atoms testing)
 
 -- |Check if a version number satisfies a version requirement.
 checkVersionReq :: ST.Maybe VersionReq -> Maybe DebianVersion -> Bool
