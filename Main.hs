@@ -33,6 +33,7 @@ import ClauseSat
 import Picosat
 import LitSat
 import Hints
+import ParseHints
 import Indices
 import AtomIndex
 
@@ -45,7 +46,7 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
+defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
@@ -79,6 +80,9 @@ toArchList = map Arch . filter (not . BS.null) . BS.splitWith (\c -> c `elem` ",
 opts =
     [ Option "d" ["dir"]
       (ReqArg (\d config -> return (config { dir = d })) "DIR")
+      "directory containing britney data"
+    , Option "h" ["hints-dir"]
+      (ReqArg (\d config -> return (config { hintDir = Just d })) "DIR")
       "directory containing britney data"
     , Option "a" ["arches"]
       (ReqArg (\as config -> return (config { arches = toArchList as })) "ARCH,..")
@@ -161,9 +165,13 @@ runBritney config = do
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
     -}
 
+    hints <- readHintFiles config
+    hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
+    let hintResults = processHints config ai3 unstableFull testing general hints
+
     let pi = resolvePackageInfo config ai3 nonCandidateSet [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
-        nonCandidates = findNonCandidates config ai3 unstableFull testing general pi
+        nonCandidates = findNonCandidates config ai3 unstableFull testing general pi hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
 
     hPutStrLn stderr $ "In unstable, " ++ show (IxS.size nonCandidateSet) ++ " atoms are not candidates."

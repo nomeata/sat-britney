@@ -19,6 +19,7 @@ import Debug.Trace
 import Safe
 import GHC.Exts (build)
 
+import ParseHints
 import Indices
 import Types
 import AtomIndex
@@ -297,12 +298,11 @@ generateInstallabilityAtoms config pi ai =
 
 -- Sources and binaries that will not be in testing, in any case. Can be used
 -- to skip certain things, most notable generating the dependency information.
-findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo
+findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> HintResults
     -> Producer (SrcI, String)
-findNonCandidates config ai unstable testing general pi f x =
-    (toProducer $ outdated ++ obsolete ++ tooyoung) f x
+findNonCandidates config ai unstable testing general pi hr f x =
+    (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked) f x
   where tooyoung = 
-            {-# SCC "tooyoung" #-}
             -- packages need to be old enough
             [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
                 src <- IxM.keys buildsOnlyUnstable,
@@ -312,7 +312,6 @@ findNonCandidates config ai unstable testing general pi f x =
                 age <= minAge
             ] 
         outdated = 
-            {-# SCC "outdated" #-}
             -- release architectures ought not to be out of date
             [ (newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
                 binI <- IxS.toList (binaries unstable),
@@ -322,11 +321,14 @@ findNonCandidates config ai unstable testing general pi f x =
                 newer `IxS.notMember` sources testing
             ]
         obsolete = 
-            {-# SCC "obsolete" #-}
             -- never add a source package to testing that is already superceded
             [ (src, "it is already superceded by " ++ show (ai `lookupSrc` s)) |
                 (src, bins) <- IxM.toList buildsOnlyUnstable,
                 (s:_) <- [newerSources unstable IxM.! src]
+            ]
+        blocked = 
+            [ (src, "is blocked by the release team") |
+                src <- IxS.toList (blockedSources hr)
             ]
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)

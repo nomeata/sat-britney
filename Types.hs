@@ -217,6 +217,7 @@ data TransSize = AsLargeAsPossible | AsSmallAsPossible | ManySmall | AnySize
 
 data Config = Config
     { dir :: FilePath
+    , hintDir :: Maybe FilePath
     , arches :: [Arch]
     , releaseArches :: [Arch]
     , archForAll :: Arch

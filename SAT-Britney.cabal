@@ -40,6 +40,7 @@ Executable SAT-Britney
         , bitarray
         , vector
         , vector-algorithms
+        , split
 
   Pkgconfig-Depends: 
         libdpkg
