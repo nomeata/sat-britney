@@ -31,6 +31,7 @@ import Data.List
 import Data.Maybe
 import Data.Function
 import Data.Either
+import Data.Int
 import System.Directory
 import Distribution.Simple.Utils (withTempFile)
 import Control.Arrow 
@@ -45,7 +46,7 @@ import qualified Data.Set as S
 -- Remember largest variable
 type CNF = ([Conj], Int)
 -- Conj is guaranteed to be ordered by absolute value
-type Conj = U.Vector Int
+type Conj = U.Vector Int32
 
 -- Known to have rage (-maxVar,maxVar)
 type AssignmentMask = BitArray
@@ -58,7 +59,7 @@ combineCNF (conj1,mi1) (conj2,mi2)
 
 atoms2Conj :: [Int] -> Conj
 atoms2Conj list = U.create $ do
-    v <- U.unsafeThaw (U.fromList list) 
+    v <- U.unsafeThaw $ U.fromList $ map fromIntegral $ list
     Insertion.sortBy (compare `on` abs) v
     return v
 
@@ -70,7 +71,7 @@ conjs2Cnf m conjs = m `seq` (conjs, m)
 
 atom2Conj :: Int -> Conj
 {-# INLINE atom2Conj #-}
-atom2Conj i = U.singleton i
+atom2Conj i = U.singleton (fromIntegral i)
 
 atom2Conj' = atom2Conj invalidExtra
 
@@ -261,7 +262,7 @@ partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
   where --array = listBitArray (1,maxVar) $ map (>0) vars
         array = bitArray (1,maxVar) [ (i, True) | i <- vars, i > 0]
-        check = U.any (\i -> (i > 0) == lookupBit array (abs i))
+        check = U.any (\i -> (i > 0) == lookupBit array (abs (fromIntegral i)))
 
 
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
@@ -351,10 +352,10 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
                 map (\c -> if U.length c == 1
                            then Left (U.head c)
                            else Right c) hard
-            knownAtomsA = bitArray (-maxVar, maxVar) [ (i, True) | i <- singletons] 
-            surelyTrueAtom i = lookupBit knownAtomsA i
+            knownAtomsA = bitArray (-maxVar, maxVar) [ (fromIntegral i, True) | i <- singletons] 
+            surelyTrueAtom i = lookupBit knownAtomsA (fromIntegral i)
             surelyTrueConjs = U.any surelyTrueAtom
-            knownFalse i = lookupBit knownAtomsA (-i)
+            knownFalse i = lookupBit knownAtomsA $ fromIntegral (-i)
             hard' = map (U.filter (not . knownFalse)) .
                     filter (not . surelyTrueConjs) $ others 
             soft' = filter (not . U.null) .
