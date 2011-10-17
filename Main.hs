@@ -146,7 +146,9 @@ main = do
         (o,[],[] ) -> do
             config <- foldM (flip id) defaultConfig o
             runBritney config 
-        (_,_,errs) -> usage 
+        (_,_,errs) -> do
+            hPutStr stderr $ unlines errs
+            usage 
 
 runBritney config = do
     let ai1 = emptyIndex
