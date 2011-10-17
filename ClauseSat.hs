@@ -15,6 +15,7 @@ import Types
 import Indices
 import GHC.Exts ( augment, build ) 
 import qualified Data.Vector as V
+import Control.Seq
 
 {-
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
@@ -30,7 +31,8 @@ allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 -}
 
 clauses2CNF :: AtomI -> Producer (Clause AtomI) -> CNF
-clauses2CNF (Index mv) clauses = (V.fromList $ clauses (\c -> augment (clause2CNF c)) [], mv)
+clauses2CNF (Index mv) clauses = (V.fromList conjs, mv)
+    where conjs = clauses (\c -> augment (clause2CNF c)) [] `using` seqList rseq
 
 clause2CNF :: Clause AtomI -> Producer Conj
 clause2CNF c@(OneOf as _) = toProducer
