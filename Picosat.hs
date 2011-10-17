@@ -42,9 +42,9 @@ import qualified Data.Vector.Algorithms.Insertion as Insertion
 import qualified Data.IntSet as IS
 import qualified Data.Set as S
 
+-- Remember largest variable
 type CNF = ([Conj], Int)
--- Conj is in DIMACS format, e.g. list of digits, followed by "0\n"
--- Also, remember largest variable
+-- Conj is guaranteed to be ordered by absolute value
 type Conj = U.Vector Int
 
 -- Known to have rage (-maxVar,maxVar)
@@ -52,8 +52,9 @@ type AssignmentMask = BitArray
 
 combineCNF :: CNF -> CNF -> CNF
 combineCNF (conj1,mi1) (conj2,mi2)
-    | mi1 /= mi2  = error "combineCNF: maxVar do not agree"
+--    | mi1 /= mi2  = error "combineCNF: maxVar do not agree"
     | otherwise   = (conj1 ++ conj2 , mi1)
+{-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj
 atoms2Conj list = U.create $ do

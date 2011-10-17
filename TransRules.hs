@@ -62,20 +62,26 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
         filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
 
 
-resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> [RawPackageInfo] -> PackageInfo
-resolvePackageInfo config ai nonCandidates rawPackageInfos = PackageInfo{..}
+resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
+resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
+
+        buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
+
+        nonCandidateBins = IxS.fromList $
+            concatMap (buildsUnion IxM.!) $
+            IxS.toList nonCandidates
         
         depends = {-# SCC "depends" #-} IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
                               in map $ first $
-                                filter ((`IxS.notMember` nonCandidates) . (builtBy IxM.!)) .
+                                filter (`IxS.notMember` nonCandidateBins) .
                                 nub .
                                 concatMap (resolveDep arch)
                     ) $
                     IxM.unions $
                     map (IxM.filterWithKey $ \k v -> 
-                            (builtBy IxM.! k) `IxS.notMember` nonCandidates
+                            k `IxS.notMember` nonCandidateBins
                         ) $
                     map dependsR rawPackageInfos
 

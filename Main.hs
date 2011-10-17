@@ -169,12 +169,12 @@ runBritney config = do
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
     let hintResults = processHints config ai3 unstableFull testing general hints
 
-    let pi = resolvePackageInfo config ai3 nonCandidateSet [testingRPI, unstableRPI]
+    let pi = resolvePackageInfo config ai3 nonCandidateSet [testing, unstableFull] [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
         nonCandidates = findNonCandidates config ai3 unstableFull testing general pi hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
 
-    hPutStrLn stderr $ "In unstable, " ++ show (IxS.size nonCandidateSet) ++ " atoms are not candidates."
+    hPutStrLn stderr $ "In unstable, " ++ show (IxS.size nonCandidateSet) ++ " sources are not candidates."
 
     mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
         hPutStrLn stderr $ "ERROR: " ++ show (pp ai3 atom) ++ " is a non-candidate in testin!"
