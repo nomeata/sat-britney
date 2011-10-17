@@ -39,7 +39,6 @@ Executable SAT-Britney
         , deepseq
         , bitarray
         , vector
-        , vector-algorithms
         , split
 
   Pkgconfig-Depends: 

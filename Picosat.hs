@@ -38,7 +38,6 @@ import Control.Arrow
 import Control.Monad
 import Data.BitArray
 import qualified Data.Vector.Unboxed as U
-import qualified Data.Vector.Algorithms.Insertion as Insertion
 
 import qualified Data.IntSet as IS
 import qualified Data.Set as S
@@ -58,10 +57,7 @@ combineCNF (conj1,mi1) (conj2,mi2)
 {-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj
-atoms2Conj list = U.create $ do
-    v <- U.unsafeThaw $ U.fromList $ map fromIntegral $ list
-    Insertion.sortBy (compare `on` abs) v
-    return v
+atoms2Conj = U.fromList . map fromIntegral . sortBy (compare `on` abs)
 
 conj2Line :: Conj -> BS.ByteString
 conj2Line ls = BS.pack $ unwords (map show (U.toList ls)) ++ " 0\n"
