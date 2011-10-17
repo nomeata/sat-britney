@@ -549,7 +549,7 @@ transitionRules' config ai unstable testing general pi nc =
             sources unstable `IxS.difference` sources testing
                              `IxS.difference` obsoleteSource
                              `IxS.difference` youngSource
-        unwanted = [] -- fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
+        unwanted = fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
 
         binariesUnion = binaries testing `IxS.union` binaries unstable
 
