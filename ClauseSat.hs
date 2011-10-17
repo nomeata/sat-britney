@@ -14,6 +14,7 @@ import Picosat
 import Types
 import Indices
 import GHC.Exts ( augment, build ) 
+import qualified Data.Vector as V
 
 {-
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
@@ -29,7 +30,7 @@ allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 -}
 
 clauses2CNF :: AtomI -> Producer (Clause AtomI) -> CNF
-clauses2CNF (Index mv) clauses = (clauses (\c -> augment (clause2CNF c)) [], mv)
+clauses2CNF (Index mv) clauses = (V.fromList $ clauses (\c -> augment (clause2CNF c)) [], mv)
 
 clause2CNF :: Clause AtomI -> Producer Conj
 clause2CNF c@(OneOf as _) = toProducer
@@ -60,7 +61,7 @@ clause2CNF c@(Not a _) = toProducer
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
 cnf2Clauses clauses (conj,_) = toProducer $ filter check $ build clauses
   where check c = any (`S.member` conjS) $ build (clause2CNF c)
-        conjS = S.fromList conj
+        conjS = S.fromList $ V.toList conj
 
 runClauseSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF -> IO (Either CNF (S.Set AtomI))
 runClauseSAT mi desired unwanted cnf = do

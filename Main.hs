@@ -13,6 +13,7 @@ import qualified Data.Set as S
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.Strict as ST
+import qualified Data.Vector as V
 import Control.Monad
 import System.IO
 import System.Console.GetOpt
@@ -224,7 +225,7 @@ runBritney config = do
             hPrint stderr $ nest 4 (vcat (map (pp ai) (build mus)))
             exitFailure
         Right (leftConj,removeConjs) -> do
-            hPutStrLn stderr $ show (length (fst removeConjs)) ++ " clauses are removed to make testing conform"
+            hPutStrLn stderr $ show (V.length (fst removeConjs)) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
                 let removeClause = cnf2Clauses relaxable removeConjs 
                 hPrint h $ nest 4 (vcat (map (pp ai) (build removeClause)))

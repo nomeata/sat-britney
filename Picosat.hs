@@ -37,13 +37,14 @@ import Distribution.Simple.Utils (withTempFile)
 import Control.Arrow 
 import Control.Monad
 import Data.BitArray
+import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as U
 
 import qualified Data.IntSet as IS
 import qualified Data.Set as S
 
 -- Remember largest variable
-type CNF = ([Conj], Int)
+type CNF = (V.Vector Conj, Int)
 -- Conj is guaranteed to be ordered by absolute value
 type Conj = U.Vector Int32
 
@@ -53,7 +54,7 @@ type AssignmentMask = BitArray
 combineCNF :: CNF -> CNF -> CNF
 combineCNF (conj1,mi1) (conj2,mi2)
 --    | mi1 /= mi2  = error "combineCNF: maxVar do not agree"
-    | otherwise   = (conj1 ++ conj2 , mi1)
+    | otherwise   = (conj1 V.++ conj2 , mi1)
 {-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj
@@ -62,7 +63,7 @@ atoms2Conj = U.fromList . map fromIntegral . sortBy (compare `on` abs)
 conj2Line :: Conj -> BS.ByteString
 conj2Line ls = BS.pack $ unwords (map show (U.toList ls)) ++ " 0\n"
 
-conjs2Cnf :: Int -> [Conj] -> CNF
+conjs2Cnf :: Int -> V.Vector Conj -> CNF
 conjs2Cnf m conjs = m `seq` (conjs, m)
 
 atom2Conj :: Int -> Conj
@@ -74,8 +75,8 @@ atom2Conj' = atom2Conj invalidExtra
 formatCNF :: CNF -> L.ByteString
 formatCNF (conjs,maxVar) = L.concat
     [ L.pack "c LitSat CNF generator\n"
-    , L.pack $ unwords ["p", "cnf", show maxVar, show (length conjs)] ++ "\n"
-    , L.fromChunks $ map conj2Line conjs
+    , L.pack $ unwords ["p", "cnf", show maxVar, show (V.length conjs)] ++ "\n"
+    , L.fromChunks $ map conj2Line $ V.toList conjs
     ]
 
 formatCNFPMAX :: CNF -> CNF -> L.ByteString
@@ -83,11 +84,11 @@ formatCNFPMAX (conjs, maxVar1) (relaxable, maxVar2) = L.concat $
     [ L.pack "c LitSat CNF generator\n"
     , L.pack $ unwords
         ["p", "wcnf", show maxVar, show (numClauses + numRelaxable), topN ] ++ "\n"
-    , L.fromChunks $ prependEach top  $ map conj2Line conjs
-    , L.fromChunks $ prependEach soft $ map conj2Line relaxable
+    , L.fromChunks $ prependEach top  $ map conj2Line $ V.toList conjs
+    , L.fromChunks $ prependEach soft $ map conj2Line $ V.toList relaxable
     ]
-  where numClauses = length conjs
-        numRelaxable = length relaxable
+  where numClauses = V.length conjs
+        numRelaxable = V.length relaxable
         topN = show (numRelaxable + 2)
         top = BS.pack (topN ++ " ")
         soft = BS.pack ("1 ")
@@ -101,7 +102,7 @@ parseConj = atoms2Conj . filter (/=0) . map int . BS.words
                     
 parseCNF :: Int -> BS.ByteString -> CNF
 parseCNF m bs = 
-    ( map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines $ bs
+    ( V.fromList . map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines $ bs
     , m )
 
 runPicosat :: CNF -> IO (Either (CNF) [Int])
@@ -151,8 +152,8 @@ runPicosat cnf = do
             error $ "Cannot parse picostat status output: " ++ s
 
 findConj :: CNF -> CNF -> CNF
-findConj (mus,_) = first (filter (`S.member` set))
-  where set = S.fromList mus
+findConj (mus,_) = first (V.filter (`S.member` set))
+  where set = S.fromList (V.toList mus)
 
 -- Takes a CNF and removes clauses until it becomes satisfiable.
 -- The first argument gives the CNFs to relax
@@ -190,7 +191,7 @@ relaxer relaxable cnf = do
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion maximal with regard to these atoms.
-runPicosatPMAX :: [Int] -> CNF -> IO (Either (CNF) [Int])
+runPicosatPMAX :: [Int] -> CNF -> IO (Either CNF [Int])
 runPicosatPMAX [] cnf = runPicosat cnf
 runPicosatPMAX desired cnf = do
     ret <- runPMAXSolver cnf relaxable
@@ -204,7 +205,7 @@ runPicosatPMAX desired cnf = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just solution -> return (Right solution)
-    where relaxable = (map atom2Conj desired, snd cnf)
+    where relaxable = (V.fromList (map atom2Conj desired), snd cnf)
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion minimal with regard to these atoms, but
@@ -212,7 +213,7 @@ runPicosatPMAX desired cnf = do
 runPicosatPMIN1 :: [Int] -> CNF -> IO (Maybe [Int])
 runPicosatPMIN1 [] cnf = error $ "Cannot call runPicosatPMIN1 with an empty set of desired clauses"
 runPicosatPMIN1 desired cnf = runPMAXSolver cnf relaxable
-    where relaxable = (disj : map atom2Conj desired, snd cnf)
+    where relaxable = (V.fromList (disj : map atom2Conj desired), snd cnf)
           disj = atoms2Conj desired
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
@@ -226,7 +227,7 @@ runPicosatPMINMAX [] cnf = do
         Right solution -> return (Right (solution, [solution]))
 runPicosatPMINMAX desired cnf = do
     ret <- if isJust sret
-           then runPMAXSolver cnf' (map atom2Conj desired, snd cnf)
+           then runPMAXSolver cnf' (V.fromList (map atom2Conj desired), snd cnf)
            else return Nothing
     case ret of 
         Nothing -> do
@@ -240,14 +241,14 @@ runPicosatPMINMAX desired cnf = do
         Just maxSol -> do
             let maxSol' = applyMask known maxSol
             Right . (maxSol',) <$> step (filter (`IS.member` desiredS) maxSol')
-  where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf ([], snd cnf)
+  where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf (V.empty, snd cnf)
         desiredS    = IS.fromList desired
         step []     = return []
         step todo = do
             hPutStrLn stderr $ show (length todo) ++ " clauses left while finding next small solution..."
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
                               (applyMask known) <$>
-                runPicosatPMAX (map negate desired) (first (atoms2Conj todo :) cnf')
+                runPicosatPMAX (map negate desired) (first (atoms2Conj todo `V.cons`) cnf')
             let aMinSolS = IS.fromList aMinSol
                 todo' = filter (`IS.notMember` aMinSolS) todo
             when (length todo == length todo') $
@@ -255,7 +256,7 @@ runPicosatPMINMAX desired cnf = do
             (aMinSol :) <$> step todo'
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
-partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ partition check conjs
+partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ V.unstablePartition check conjs
   where --array = listBitArray (1,maxVar) $ map (>0) vars
         array = bitArray (1,maxVar) [ (i, True) | i <- vars, i > 0]
         check = U.any (\i -> (i > 0) == lookupBit array (abs (fromIntegral i)))
@@ -282,7 +283,7 @@ runClasp = runAPMAXSolver (\filename ->  proc "clasp" $ ["--quiet=1,2",filename]
 
 runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
 runAPMAXSolver cmd cnf desired =
-    if null (fst cnf) && null (fst desired) then return (Just [1..snd cnf]) else do
+    if V.null (fst cnf) && V.null (fst desired) then return (Just [1..snd cnf]) else do
     getTemporaryDirectory  >>= \tmpdir -> do
     withTempFile tmpdir "sat-britney-.wcnf" $ \tmpfile handle -> do
     let cnfString = formatCNFPMAX cnf desired
@@ -336,29 +337,34 @@ showCmdSpec (RawCommand cmd args) = concat $ intersperse " " (cmd:args)
 -- that are known.
 simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
 simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
-  where go ms (hard,maxVar) (soft,_) = case singletons of
-            [] -> if isValidMask finalMask
-                  then Just ((hard,maxVar), (soft,maxVar), finalMask)
-                  else Nothing
-            _  -> if any (U.null) hard'
-                  then Nothing
-                  else go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
+  where go ms (hard,maxVar) (soft,_) = if V.null singletons
+            then if isValidMask finalMask
+                 then Just ((hard,maxVar), (soft,maxVar), finalMask)
+                 else Nothing
+            else if V.any (U.null) hard'
+                 then Nothing
+                 else go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
           where 
-            (singletons, others) = partitionEithers $ 
-                map (\c -> if U.length c == 1
+            (singletons, others) = partitionEithersV $ 
+                V.map (\c -> if U.length c == 1
                            then Left (U.head c)
                            else Right c) hard
-            knownAtomsA = bitArray (-maxVar, maxVar) [ (fromIntegral i, True) | i <- singletons] 
+            knownAtomsA = bitArray (-maxVar, maxVar)
+                                 [ (fromIntegral i, True) | i <- V.toList singletons] 
             surelyTrueAtom i = lookupBit knownAtomsA (fromIntegral i)
             surelyTrueConjs = U.any surelyTrueAtom
             knownFalse i = lookupBit knownAtomsA $ fromIntegral (-i)
-            hard' = map (U.filter (not . knownFalse)) .
-                    filter (not . surelyTrueConjs) $ others 
-            soft' = filter (not . U.null) .
-                    map (U.filter (not . knownFalse)) .
-                    filter (not . surelyTrueConjs) $ soft 
+            hard' = V.map (U.filter (not . knownFalse)) .
+                    V.filter (not . surelyTrueConjs) $ others 
+            soft' = V.filter (not . U.null) .
+                    V.map (U.filter (not . knownFalse)) .
+                    V.filter (not . surelyTrueConjs) $ soft 
             finalMask = unionsMask ms
         emptyMask = bitArray (-maxVar, maxVar) []
+
+partitionEithersV :: V.Vector (Either a b) -> (V.Vector a, V.Vector b)
+partitionEithersV = 
+  (V.map (either id undefined) *** V.map (either undefined id)) . V.unstablePartition (either (const True) (const False))
 
 isValidMask mask = not $ any (\i -> lookupBit mask i && lookupBit mask (-i) ) [1..u]
   where (l,u) = bitArrayBounds mask
