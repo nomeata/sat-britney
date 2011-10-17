@@ -200,7 +200,7 @@ runBritney config = do
         relaxableClauses = clauses2CNF (maxIndex ai) relaxable
 
     hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
-        show (length (build relaxable)) ++ " soft clauses."
+        show (length (build relaxable)) ++ " soft clauses, with " ++ show (length (build desired)) ++ " desired and " ++ show (length (build unwanted)) ++ " unwanted atoms."
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"

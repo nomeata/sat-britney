@@ -42,7 +42,9 @@ instance IndexPred Pred where
     {-# INLINE notMember #-}
 
 seal :: Set a -> Pred a
-seal (IndexSet s) = IndexPred $ bitArray (min,max) [ (x,True) | x <- S.toList s ]
+seal (IndexSet s) = if S.null s
+                    then IndexPred $ bitArray (0,0) []
+                    else IndexPred $ bitArray (min,max) [ (x,True) | x <- S.toList s ]
   where min = S.findMin s
         max = S.findMax s
 

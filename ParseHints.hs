@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, PatternGuards #-}
 
 module ParseHints where
 
@@ -10,6 +10,7 @@ import Data.List.Split
 import System.IO
 import Data.Functor
 import System.FilePath
+import System.Directory
 import qualified Data.ByteString.Char8 as BS
 import Data.Maybe
 import Data.Char
@@ -76,7 +77,10 @@ readHintFiles config | Just dir <- hintDir config = concat <$> mapM (readHintFil
 
 readHintFile :: FilePath -> (String, [String]) -> IO [Hint]
 readHintFile dir (file,allowed) =
-    concatMap (readHintLine allowed) . lines <$> readFile (dir </> file)
+    do ex <- doesFileExist (dir </> file)
+       if ex
+         then concatMap (readHintLine allowed) . lines <$> readFile (dir </> file)
+         else return []
 
 readHintLine :: [String] -> String -> [Hint]
 readHintLine allowed line =
