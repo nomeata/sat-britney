@@ -90,7 +90,7 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
                      depends
 
         dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-}
-            IxM.map (IxS.filter (`IxS.member` hasConflictInDeps)) dependsRel
+            IxM.map (IxS.filter (`IxS.member` hasConflictInDepsProp)) dependsRel
 
         revDependsRel = {-# SCC "revDependsRel" #-} reverseRel dependsRel
 
@@ -112,14 +112,14 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
                         IxS.singleton p : map (
                             IxS.unions .
                             map (transitiveHull1 dependsRelWithConflicts) .
-                            filter (`IxS.member` hasConflictInDeps) .
+                            filter (`IxS.member` hasConflictInDepsProp) .
                             fst
                         ) deps
-                    , (c1,c2s) <- IxM.toList conflictsRel
-                    , c1 `IxS.member` deps1
-                    , deps2 <- deps2s
-                    , c2 <- IxS.toList c2s
-                    , c2 `IxS.member` deps2
+                    , c1 <- IxS.toList $ deps1 `IxS.intersection` (IxM.keysSet conflictsRel)
+                    , let c2s = conflictsRel IxM.! c1
+                    , not $ IxS.null c2s
+                    , dep2s <- deps2s
+                    , c2 <- IxS.toList $ c2s `IxS.intersection` dep2s
                     ]
 
         dependsRelBad = {-# SCC "dependsRelBad" #-} 
@@ -194,6 +194,7 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
 
         hasConflict = {-# SCC "hasConflict" #-} IxM.keysSet conflictsRel
 
+        hasConflictInDepsProp = {-# SCC "hasConflictInDepsProp" #-} IxS.seal hasConflictInDeps
         hasConflictInDeps = {-# SCC "hasConflictInDeps" #-} go hasConflict IxS.empty
           where go new cid | IxS.null new = {-# SCC "where" #-} cid
                            | otherwise = 
