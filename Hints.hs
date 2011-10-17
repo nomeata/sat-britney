@@ -16,8 +16,8 @@ import AtomIndex
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
-generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> PackageInfo -> S.Set AtomI -> L.ByteString
-generateHints ai testing unstable pi newAtoms =
+generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> IxM.Map Binary SrcI -> S.Set AtomI -> L.ByteString
+generateHints ai testing unstable builtBy newAtoms =
     (if length hintStrings == 1 then ("# " `L.append`) else id) .
     (`L.append` "\n" ) . ("easy " `L.append`) . L.unwords $ hintStrings
   where hintStrings = 
@@ -36,7 +36,7 @@ generateHints ai testing unstable pi newAtoms =
         binNMUedSources = S.fromList 
             [ (srcI,arch)
             | binI <- IxS.toList addedBinaries
-            , let srcI = builtBy pi IxM.! binI 
+            , let srcI = builtBy IxM.! binI 
             , srcI `IxS.notMember` addedSources
             , Binary _ _ (ST.Just arch) <- [ ai `lookupBin` binI]
             ]

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, NamedFieldPuns #-}
 
 -- |
 -- Copyright: (c) 2011 Joachim Breitner
@@ -176,7 +176,7 @@ runBritney config = do
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
     let hintResults = processHints config ai3 unstableFull testing general hints
 
-    let pi = resolvePackageInfo config ai3 nonCandidateSet [testing, unstableFull] [testingRPI, unstableRPI]
+    let pi@PackageInfo{builtBy} = resolvePackageInfo config ai3 nonCandidateSet [testing, unstableFull] [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
         nonCandidates = findNonCandidates config ai3 unstableFull testing general pi hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
@@ -285,7 +285,7 @@ runBritney config = do
 
             mbDo (hintsH config) $ \h -> do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints ai testing unstableFull pi thisTransitionNewAtomsIs
+                    L.hPut h $ generateHints ai testing unstableFull builtBy thisTransitionNewAtomsIs
                 hFlush h
 
             mbDo (heidiH config) $ \h -> do
