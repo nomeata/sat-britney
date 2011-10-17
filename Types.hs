@@ -235,6 +235,7 @@ data Config = Config
     , dimacsH :: Maybe Handle
     , differenceH :: Maybe Handle
     , hintsH :: Maybe Handle
+    , heidiH :: Maybe Handle
 
     , migrateThis :: Maybe Atom
     , migrateThisI :: Maybe AtomI

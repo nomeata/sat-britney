@@ -33,6 +33,7 @@ import ClauseSat
 import Picosat
 import LitSat
 import Hints
+import Heidi
 import ParseHints
 import Indices
 import AtomIndex
@@ -47,7 +48,7 @@ minAgeTable = M.fromList [
 
 defaultConfig :: Config
 defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
-                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
 allArches = map (Arch . BS.pack) $ words
@@ -111,6 +112,9 @@ opts =
     , Option "" ["hints"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { hintsH = h })) "FILE")
       "print britney2 hints to this file"
+    , Option "" ["heidi"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { heidiH = h })) "FILE")
+      "print result in heidi format to this file"
     , Option "" ["full-dependencies"]
       (NoArg (\config -> return (config { fullDependencies = True })))
       "model dependency graph per package"
@@ -280,6 +284,9 @@ runBritney config = do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
                     L.hPut h $ generateHints ai testing unstableFull pi thisTransitionNewAtomsIs
                 hFlush h
+
+            mbDo (heidiH config) $ \h -> do
+                L.hPut h $ generateHeidi ai newAtomIs
 
     hPutStrLn stderr $ "Done"
     
