@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
 -- |
 -- Module: Picosat
 -- Copyright: (c) 2011 Joachim Breitner
@@ -337,7 +337,7 @@ showCmdSpec (RawCommand cmd args) = concat $ intersperse " " (cmd:args)
 -- that are known.
 simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
 simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
-  where go ms (hard,maxVar) (soft,_) = if V.null singletons
+  where go ms (hard,maxVar) (soft,_) = if null singletons
             then if isValidMask finalMask
                  then Just ((hard,maxVar), (soft,maxVar), finalMask)
                  else Nothing
@@ -345,12 +345,10 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
                  then Nothing
                  else go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
           where 
-            (singletons, others) = partitionEithersV $ 
-                V.map (\c -> if U.length c == 1
-                           then Left (U.head c)
-                           else Right c) hard
+            singletons = V.toList $ V.filter (\c -> U.length c == 1) hard
+            others = hard
             knownAtomsA = bitArray (-maxVar, maxVar)
-                                 [ (fromIntegral i, True) | i <- V.toList singletons] 
+                                 [ (fromIntegral i, True) | (U.toList -> [i]) <- singletons] 
             surelyTrueAtom i = lookupBit knownAtomsA (fromIntegral i)
             surelyTrueConjs = U.any surelyTrueAtom
             knownFalse i = lookupBit knownAtomsA $ fromIntegral (-i)
