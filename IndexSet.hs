@@ -3,6 +3,7 @@
 module IndexSet where
 
 import Data.Functor
+import Data.BitArray
 import Control.DeepSeq
 import Unsafe.Coerce
 
@@ -18,6 +19,34 @@ instance NFData S.IntSet
 newtype Set a = IndexSet { unIndexSet :: S.IntSet }
   deriving (NFData, Show)
 
+
+class IndexPred a where
+    member :: Index i -> a i -> Bool
+    notMember :: Index i -> a i -> Bool
+
+instance IndexPred Set where
+    Index x `member` IndexSet s = x `S.member` s
+    {-# INLINE member #-}
+    Index x `notMember` IndexSet s = x `S.notMember` s
+    {-# INLINE notMember #-}
+
+
+newtype Pred a = IndexPred { unIndexPred :: BitArray }  
+
+instance IndexPred Pred where
+    Index x `member` IndexPred s =
+        let (l,u) = bitArrayBounds s
+        in if x<l || x>u then False else unsafeLookupBit s x
+    {-# INLINE member #-}
+    x `notMember` s = not $ x `member` s
+    {-# INLINE notMember #-}
+
+seal :: Set a -> Pred a
+seal (IndexSet s) = IndexPred $ bitArray (min,max) [ (x,True) | x <- S.toList s ]
+  where min = S.findMin s
+        max = S.findMax s
+
+
 empty :: Set a
 empty = IndexSet S.empty
 
@@ -27,12 +56,6 @@ Index x `insert` IndexSet s = IndexSet $ x `S.insert` s
 singleton :: Index a -> Set a
 singleton (Index x) = IndexSet $ S.singleton x
 
-notMember :: Index a -> Set a -> Bool
-Index x `notMember` IndexSet s = x `S.notMember` s
-
-member :: Index a -> Set a -> Bool
-Index x `member` IndexSet s = x `S.member` s
-{-# INLINE member #-}
 
 size :: Set a -> Int
 size (IndexSet s) = S.size s

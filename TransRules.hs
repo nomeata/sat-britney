@@ -68,7 +68,7 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
 
         buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
-        nonCandidateBins = IxS.fromList $
+        nonCandidateBins = IxS.seal $ IxS.fromList $
             concatMap (buildsUnion IxM.!) $
             IxS.toList nonCandidates
         
