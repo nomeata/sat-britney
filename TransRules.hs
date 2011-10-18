@@ -545,11 +545,11 @@ transitionRules' config ai unstable testing general pi nc =
                 age <= minAge
             ]
 
-        desired  = fmap genIndex $ IxS.toList $
-            sources unstable `IxS.difference` sources testing
-                             `IxS.difference` obsoleteSource
-                             `IxS.difference` youngSource
-        unwanted = fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
+        desired  =  fmap genIndex $ IxS.toList $
+            binaries unstable `IxS.difference` binaries testing
+
+        unwanted = fmap genIndex $ IxS.toList $
+            sources testing `IxS.difference` sources unstable
 
         binariesUnion = binaries testing `IxS.union` binaries unstable
 
