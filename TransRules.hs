@@ -92,15 +92,17 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
         dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-}
             IxM.map (IxS.filter (`IxS.member` hasConflictInDepsProp)) dependsRel
 
+        dependsRelWithConflictsHull = {-# SCC "dependsRelWithConflictsHull" #-}
+            transitiveHull dependsRelWithConflicts
+
         revDependsRel = {-# SCC "revDependsRel" #-} reverseRel dependsRel
 
         -- dependsHull = transitiveHull dependsRel
 
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
             IxM.filter (not . S.null) $
-            flip IxM.mapWithKey dependsRelWithConflicts $ \p _ ->
-                let deps = transitiveHull1 dependsRelWithConflicts p
-                in S.fromList
+            flip IxM.mapWithKey dependsRelWithConflictsHull $ \p deps ->
+                S.fromList
                     [ (c1,c2)
                     | c1 <- IxS.toList $ deps `IxS.intersection` hasConflict
                     , let c2s = conflictsRel IxM.! c1
@@ -132,7 +134,7 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
         dependsBadHull = {-# SCC "dependsBadHull" #-} IxM.fromListWith IxS.union
                 [ (p,depsHull)
                 | (p,conflicts) <- IxM.toList relevantConflicts
-                , let deps = transitiveHull1 dependsRelWithConflicts p
+                , let deps = dependsRelWithConflictsHull IxM.! p
                 , let revDependsRel' = restrictRel revDependsRel deps
                 , (c1,c2) <- S.toList conflicts
                 , let depsHull =
