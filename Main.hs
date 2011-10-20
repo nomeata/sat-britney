@@ -200,6 +200,7 @@ runBritney config = do
             (binCount^2)
             (binCount * depCount)
 
+        {-
         hPrintf stderr "Encoding considering cones: %d atoms and %d clauses\n" 
             (binCount + (sum $ map IxS.size $ IxM.elems $ transitiveHull (dependsRel pi)))
             (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ transitiveHull (dependsRel pi))
@@ -207,6 +208,7 @@ runBritney config = do
         hPrintf stderr "Encoding considering easy packages: %d atoms and %d clauses\n" 
             (binCount + (sum $ map IxS.size $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi)))
             (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi))
+        -}
 
         hPrintf stderr "Encoding considering only relevant conflicts/dependencies: %d atoms and %d clauses\n" 
             (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull pi))
