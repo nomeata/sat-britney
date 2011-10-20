@@ -37,6 +37,9 @@ import Distribution.Simple.Utils (withTempFile)
 import Control.Arrow 
 import Control.Monad
 import Data.BitArray
+import Data.Array.Base (unsafeAt)
+import Data.Array.Unboxed
+import Data.Array.ST
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as U
 
@@ -49,7 +52,7 @@ type CNF = (V.Vector Conj, Int)
 type Conj = U.Vector Int32
 
 -- Known to have rage (-maxVar,maxVar)
-type AssignmentMask = BitArray
+type AssignmentMask = UArray Int Bool
 
 combineCNF :: CNF -> CNF -> CNF
 combineCNF (conj1,mi1) (conj2,mi2)
@@ -258,8 +261,8 @@ runPicosatPMINMAX desired cnf = do
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ V.unstablePartition check conjs
   where --array = listBitArray (1,maxVar) $ map (>0) vars
-        array = bitArray (1,maxVar) [ (i, True) | i <- vars, i > 0]
-        check = U.any (\i -> (i > 0) == lookupBit array (abs (fromIntegral i)))
+        array = array' (1,maxVar) [ (i, True) | i <- vars, i > 0]
+        check = U.any (\i -> (i > 0) == unsafeAt' array (abs (fromIntegral i)))
 
 
 runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
@@ -350,14 +353,14 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
             singletons = {-# SCC "singletons" #-} V.toList $ V.filter (\c -> U.length c == 1) hard
             others = hard
             knownAtomsA = {-# SCC "knownAtomsA" #-}
-                bitArray (-maxVar, maxVar)
+                array' (-maxVar, maxVar)
                          [ (fromIntegral i, True) | (U.toList -> [i]) <- singletons] 
             surelyTrueAtom i = {-# SCC "surelyTrueAtom" #-}
-                unsafeLookupBit knownAtomsA (fromIntegral i)
+                unsafeAt' knownAtomsA (fromIntegral i)
             surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
                 U.any surelyTrueAtom
             knownFalse i = {-# SCC "knownFalse" #-}
-                unsafeLookupBit knownAtomsA (fromIntegral (-i))
+                unsafeAt' knownAtomsA (fromIntegral (-i))
             hard' = {-# SCC "hard'" #-}
                 V.map (U.filter (not . knownFalse)) .
                 V.filter (not . surelyTrueConjs) $ others 
@@ -366,22 +369,32 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
                 V.map (U.filter (not . knownFalse)) .
                 V.filter (not . surelyTrueConjs) $ soft 
             finalMask = unionsMask ms
-        emptyMask = bitArray (-maxVar, maxVar) []
+        emptyMask = array' (-maxVar, maxVar) [] :: AssignmentMask
+
+array' :: (Int, Int) -> [(Int, Bool)] -> AssignmentMask
+array' (l,u) assoc = runSTUArray $ do
+    arr <- newArray (l,u) False
+    mapM_ (uncurry (writeArray arr)) assoc
+    return arr
+
+unsafeAt' arr i = unsafeAt arr $ index (bounds arr) i
+{-# INLINE unsafeAt' #-}
 
 partitionEithersV :: V.Vector (Either a b) -> (V.Vector a, V.Vector b)
 partitionEithersV = 
   (V.map (either id undefined) *** V.map (either undefined id)) . V.unstablePartition (either (const True) (const False))
 
-isValidMask mask = not $ any (\i -> unsafeLookupBit mask i && unsafeLookupBit mask (-i) ) [1..u]
-  where (l,u) = bitArrayBounds mask
+isValidMask mask = not $ any (\i -> unsafeAt' mask i && unsafeAt' mask (-i) ) [1..u]
+  where (l,u) = bounds mask
 
+applyMask :: AssignmentMask -> [Int] -> [Int]
 applyMask mask = map fixAtom 
-  where fixAtom i | unsafeLookupBit mask i    = i
-                  | unsafeLookupBit mask (-i) = -i
+  where fixAtom i | unsafeAt' mask i    = i
+                  | unsafeAt' mask (-i) = -i
                   | otherwise           = i
 
 unionsMask [] = error "Cannot union empty set of masks"
-unionsMask ms@(m1:_) =  bitArray (l,u) [ (i, True) | i <- [l..u] , any (`unsafeLookupBit` i) ms ]
-  where (l,u) = bitArrayBounds m1
+unionsMask ms@(m1:_) =  array' (l,u) [ (i, True) | i <- [l..u] , any (`unsafeAt'` i) ms ]
+  where (l,u) = bounds m1
 
 invalidExtra = error "PicoSat.hs: Internally created CNF clause leaked to caller"
