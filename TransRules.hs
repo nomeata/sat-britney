@@ -253,7 +253,7 @@ reverseRel rel = foldr (uncurry (IxM.insertWith IxS.union)) IxM.empty $
                ]
 
 restrictRel :: IxM.Map a (IxS.Set a) -> IxS.Set a -> IxM.Map a (IxS.Set a)
-restrictRel rel set = IxM.fromAscList $
+restrictRel rel set = {-# SCC "restrictRel" #-} IxM.fromAscList $
     flip mapMaybe (IxS.toAscList set) $ \k ->
         (k,) . IxS.filter (`IxS.member` set) <$> IxM.lookup k rel
 
