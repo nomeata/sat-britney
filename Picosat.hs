@@ -336,6 +336,8 @@ showCmdSpec (RawCommand cmd args) = concat $ intersperse " " (cmd:args)
 -- fixed by a top level clause), removing variables from clauses or clauses
 -- that are known.
 simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
+-- simplifyCNF (hard,maxVar) (soft,_)  = Just ((hard,maxVar), (soft,maxVar), emptyMask)
+--  where emptyMask = bitArray (-maxVar, maxVar) []
 simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
   where go ms (hard,maxVar) (soft,_) = if null singletons
             then if isValidMask finalMask
