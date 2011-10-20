@@ -61,6 +61,9 @@ unionWith f (IndexMap m1) (IndexMap m2) = IndexMap (M.unionWith f m1 m2)
 keys :: Map t a1 -> [Index a]
 keys (IndexMap m1) = Index <$> M.keys m1
 
+elems :: Map t a1 -> [a1]
+elems (IndexMap m1) = M.elems m1
+
 toList :: Map t d -> [(Index a, d)]
 toList (IndexMap m1) = first Index <$> M.toList m1
 
