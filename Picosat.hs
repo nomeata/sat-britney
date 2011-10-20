@@ -347,18 +347,24 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
                  then Nothing
                  else go (knownAtomsA:ms) (hard',maxVar) (soft',maxVar)
           where 
-            singletons = V.toList $ V.filter (\c -> U.length c == 1) hard
+            singletons = {-# SCC "singletons" #-} V.toList $ V.filter (\c -> U.length c == 1) hard
             others = hard
-            knownAtomsA = bitArray (-maxVar, maxVar)
-                                 [ (fromIntegral i, True) | (U.toList -> [i]) <- singletons] 
-            surelyTrueAtom i = lookupBit knownAtomsA (fromIntegral i)
-            surelyTrueConjs = U.any surelyTrueAtom
-            knownFalse i = lookupBit knownAtomsA $ fromIntegral (-i)
-            hard' = V.map (U.filter (not . knownFalse)) .
-                    V.filter (not . surelyTrueConjs) $ others 
-            soft' = V.filter (not . U.null) .
-                    V.map (U.filter (not . knownFalse)) .
-                    V.filter (not . surelyTrueConjs) $ soft 
+            knownAtomsA = {-# SCC "knownAtomsA" #-}
+                bitArray (-maxVar, maxVar)
+                         [ (fromIntegral i, True) | (U.toList -> [i]) <- singletons] 
+            surelyTrueAtom i = {-# SCC "surelyTrueAtom" #-}
+                unsafeLookupBit knownAtomsA (fromIntegral i)
+            surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
+                U.any surelyTrueAtom
+            knownFalse i = {-# SCC "knownFalse" #-}
+                unsafeLookupBit knownAtomsA (fromIntegral (-i))
+            hard' = {-# SCC "hard'" #-}
+                V.map (U.filter (not . knownFalse)) .
+                V.filter (not . surelyTrueConjs) $ others 
+            soft' = {-# SCC "soft'" #-}
+                V.filter (not . U.null) .
+                V.map (U.filter (not . knownFalse)) .
+                V.filter (not . surelyTrueConjs) $ soft 
             finalMask = unionsMask ms
         emptyMask = bitArray (-maxVar, maxVar) []
 
@@ -366,16 +372,16 @@ partitionEithersV :: V.Vector (Either a b) -> (V.Vector a, V.Vector b)
 partitionEithersV = 
   (V.map (either id undefined) *** V.map (either undefined id)) . V.unstablePartition (either (const True) (const False))
 
-isValidMask mask = not $ any (\i -> lookupBit mask i && lookupBit mask (-i) ) [1..u]
+isValidMask mask = not $ any (\i -> unsafeLookupBit mask i && unsafeLookupBit mask (-i) ) [1..u]
   where (l,u) = bitArrayBounds mask
 
 applyMask mask = map fixAtom 
-  where fixAtom i | lookupBit mask i    = i
-                  | lookupBit mask (-i) = -i
+  where fixAtom i | unsafeLookupBit mask i    = i
+                  | unsafeLookupBit mask (-i) = -i
                   | otherwise           = i
 
 unionsMask [] = error "Cannot union empty set of masks"
-unionsMask ms@(m1:_) =  bitArray (l,u) [ (i, True) | i <- [l..u] , any (`lookupBit` i) ms ]
+unionsMask ms@(m1:_) =  bitArray (l,u) [ (i, True) | i <- [l..u] , any (`unsafeLookupBit` i) ms ]
   where (l,u) = bitArrayBounds m1
 
 invalidExtra = error "PicoSat.hs: Internally created CNF clause leaked to caller"

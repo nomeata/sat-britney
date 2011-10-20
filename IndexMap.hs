@@ -12,7 +12,7 @@ import Indices
 
 import GHC.Exts ( build )
 
-instance NFData a => NFData (M.IntMap a) where rnf m = rnf (M.toList m)
+-- instance NFData a => NFData (M.IntMap a) where rnf m = rnf (M.toList m)
 
 newtype Map a b = IndexMap { unIndexMap :: M.IntMap b }
   deriving (NFData, Show)
