@@ -225,6 +225,7 @@ data Config = Config
     , defaultMinAge :: Age
 
     , fullDependencies :: Bool
+    , showStats :: Bool
 
     , transSize :: TransSize
 

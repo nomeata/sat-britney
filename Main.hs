@@ -22,6 +22,7 @@ import Data.Functor
 import Data.Maybe
 import Data.List
 import GHC.Exts ( augment, build ) 
+import Text.Printf
 
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
@@ -48,7 +49,7 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
+defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False False AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
@@ -119,6 +120,9 @@ opts =
     , Option "" ["full-dependencies"]
       (NoArg (\config -> return (config { fullDependencies = True })))
       "model dependency graph per package"
+    , Option "" ["stats"]
+      (NoArg (\config -> return (config { showStats = True })))
+      "print stats for various modelings of the problem"
     , Option "" ["migrate"]
       (ReqArg (\ss config -> parseAtom ss >>= \s -> return (config { migrateThis = Just s })) "PKG")
       "find a migration containing this package.\nIf it is a source package, it ignores this package's age"
@@ -186,7 +190,29 @@ runBritney config = do
     mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
         hPutStrLn stderr $ "ERROR: " ++ show (pp ai3 atom) ++ " is a non-candidate in testin!"
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
+    when (showStats config) $ do
+        let binCount = IxM.size (depends pi)
+            depCount = sum $ map length $ IxM.elems (depends pi)
+
+        hPrintf stderr "Non-conflict encoding: %d atoms and %d clauses\n" binCount depCount
+
+        hPrintf stderr "Naive encoding (calculated): %d atoms and %d clauses\n" 
+            (binCount^2)
+            (binCount * depCount)
+
+        hPrintf stderr "Encoding considering cones: %d atoms and %d clauses\n" 
+            (binCount + (sum $ map IxS.size $ IxM.elems $ transitiveHull (dependsRel pi)))
+            (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ transitiveHull (dependsRel pi))
+
+        hPrintf stderr "Encoding considering easy packages: %d atoms and %d clauses\n" 
+            (binCount + (sum $ map IxS.size $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi)))
+            (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi))
+
+        hPrintf stderr "Encoding considering only relevant conflicts/dependencies: %d atoms and %d clauses\n" 
+            (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull pi))
+            (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull pi)
+
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts pi) ++ " conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
 
     hPutStrLn stderr $ "Size of dependency hulls of packages with bad dependencies: " 
         -- ++ show (IxM.fold ((+) . IxS.size) 0 $ IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps pi) (dependsHull pi))
