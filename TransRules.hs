@@ -62,13 +62,17 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
         filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
 
 
-resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
-resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
+resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
+resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageInfo{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
 
         buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
-        nonCandidateBins = IxS.seal $ IxS.fromList $
+        binariesUnion = {-# SCC "binariesUnion" #-} IxS.unions $ map binaries sis
+
+        affected = IxS.unions . map (transitiveHull1 revDependsRel) $ IxS.toList $ binariesUnion `IxS.difference` unmod
+
+        nonCandidateBins = {-# SCC "nonCandidateBins" #-} IxS.seal $ IxS.fromList $
             concatMap (buildsUnion IxM.!) $
             IxS.toList nonCandidates
         
@@ -297,6 +301,14 @@ findNonCandidates config ai unstable testing general pi hr f x =
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
 
+-- Binaries that are in testing and will stay there.
+-- TODO: Force removals
+findUnmodified :: Config -> SuiteInfo -> SuiteInfo -> IxS.Set Source -> IxS.Set Binary
+findUnmodified config unstable testing nonCandidates =
+    binaries testing `IxS.intersection` binaries unstable
+  where nonCandidateBins = {-# SCC "nonCandidateBins" #-} IxS.fromList $
+            concatMap (builds unstable IxM.!) $
+            IxS.toList nonCandidates
 
 -- Wrapper around transitionRules' that prevents sharing. We _want_ to
 -- recalculate the rules everytime 'build' is called upon the producer.
@@ -372,8 +384,7 @@ transitionRules' config ai unstable testing general pi nc =
         softDependencies =
             {-# SCC "softDependencies" #-}
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
-                forI <- IxS.toList binariesUnion,
-                forI `IxM.member` dependsBadHull pi,
+                forI <- IxM.keys (dependsBadHull pi),
                 let instI = genIndex . fromJustNote "X" . indexInst ai . Inst forI $ forI
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
@@ -481,8 +492,6 @@ transitionRules' config ai unstable testing general pi nc =
 
         unwanted = fmap genIndex $ IxS.toList $
             sources testing `IxS.difference` sources unstable
-
-        binariesUnion = binaries testing `IxS.union` binaries unstable
 
         sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)

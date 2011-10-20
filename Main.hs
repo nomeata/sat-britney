@@ -154,7 +154,7 @@ main = do
 
 runBritney config = do
     let ai1 = emptyIndex
-    (unstableFull, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
+    (unstable, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, testingRPI, ai3)  <- parseSuite config ai2 (dir config </> "testing")
 
     hPutStrLn stderr $ "AtomIndex knows about " ++ show (unIndex (maxIndex ai3)) ++ " atoms."
@@ -168,21 +168,25 @@ runBritney config = do
     general <- parseGeneralInfo config ai3
 
     {-
-    let (unstableThin, unstableThinRPI) = thinSuite config unstableFull unstableRPI general
+    let (unstableThin, unstableThinRPI) = thinSuite config unstable unstableRPI general
     hPutStrLn stderr $ "Thinning unstable to " ++ show (IxS.size (sources unstableThin)) ++
         " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
     -}
 
     hints <- readHintFiles config
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
-    let hintResults = processHints config ai3 unstableFull testing general hints
+    let hintResults = processHints config ai3 unstable testing general hints
 
-    let pi@PackageInfo{builtBy} = resolvePackageInfo config ai3 nonCandidateSet [testing, unstableFull] [testingRPI, unstableRPI]
+    let pi@PackageInfo{builtBy} = resolvePackageInfo config ai3 nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
-        nonCandidates = findNonCandidates config ai3 unstableFull testing general pi hintResults
+        nonCandidates = findNonCandidates config ai3 unstable testing general pi hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
+        unmod = findUnmodified config unstable testing nonCandidateSet
 
-    hPutStrLn stderr $ "In unstable, " ++ show (IxS.size nonCandidateSet) ++ " sources are not candidates."
+
+    hPutStrLn stderr $ "In unstable are " ++ show (IxS.size (sources unstable `IxS.difference` sources testing)) ++ " new sources, out of which " ++ show (IxS.size nonCandidateSet) ++ " are not candidates."
+
+    hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified" {- ++ ", but " ++ show (IxS.size (affected pi)) ++ " are possibly affected"-} ++ "."
 
     mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
         hPutStrLn stderr $ "ERROR: " ++ show (pp ai3 atom) ++ " is a non-candidate in testin!"
@@ -221,7 +225,7 @@ runBritney config = do
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
     let (rules, relaxable, desired, unwanted)
-            = transitionRules config ai unstableFull testing general pi nonCandidates
+            = transitionRules config ai unstable testing general pi nonCandidates
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  rules
@@ -307,7 +311,7 @@ runBritney config = do
 
             mbDo (hintsH config) $ \h -> do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints ai testing unstableFull builtBy thisTransitionNewAtomsIs
+                    L.hPut h $ generateHints ai testing unstable builtBy thisTransitionNewAtomsIs
                 hFlush h
 
             mbDo (heidiH config) $ \h -> do
