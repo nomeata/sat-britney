@@ -97,6 +97,9 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
 
         revDependsRel = {-# SCC "revDependsRel" #-} reverseRel dependsRel
 
+        revDependsHull = {-# SCC "revDependsHull" #-}
+            transitiveHull revDependsRel
+
         -- dependsHull = transitiveHull dependsRel
 
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
@@ -137,9 +140,10 @@ resolvePackageInfo config ai nonCandidates sis rawPackageInfos = PackageInfo{..}
                 , let deps = dependsRelWithConflictsHull IxM.! p
                 , let revDependsRel' = restrictRel revDependsRel deps
                 , (c1,c2) <- S.toList conflicts
+
                 , let depsHull =
-                        (transitiveHull1 revDependsRel' c1 `IxS.intersection` deps) `IxS.union`
-                        (transitiveHull1 revDependsRel' c2 `IxS.intersection` deps)
+                        (IxM.findWithDefault IxS.empty c1 revDependsHull `IxS.intersection` deps) `IxS.union`
+                        (IxM.findWithDefault IxS.empty c2 revDependsHull `IxS.intersection` deps)
                 , if p `IxS.member` depsHull then True else error "p not in depsHull"
                 ]
 
@@ -217,8 +221,8 @@ allPairs' [] = []
 allPairs' (x:xs) = (x,xs) : allPairs' xs
 
 -- Could be implemented better
-transitiveHull ::  IxM.Map a1 (IxS.Set a1) -> IxM.Map a (IxS.Set a1)
-transitiveHull rel = IxM.fromList $ [ (p,transitiveHull1 rel p) | (p,_) <- IxM.toList rel]
+transitiveHull ::  IxM.Map a (IxS.Set a) -> IxM.Map a (IxS.Set a)
+transitiveHull rel = IxM.mapWithKey (\p _ -> transitiveHull1 rel p) rel
 
 transitiveHull1 :: IxM.Map a (IxS.Set a) -> Index a -> IxS.Set a
 transitiveHull1 rel x = addTransitiveHull1 rel x IxS.empty
