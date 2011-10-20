@@ -17,6 +17,9 @@ import GHC.Exts ( augment, build )
 import qualified Data.Vector as V
 import Control.Seq
 
+import Data.Vector.Unboxed (modify)
+import qualified Data.Vector.Algorithms.Intro as Intro
+
 {-
 allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = foldl go M.empty
@@ -60,9 +63,10 @@ clause2CNF c@(Not a _) = toProducer
                                 [ atom2Conj (-ai) ]
     where ai = unIndex a
 
+-- TODO clauses are unsorted ATM
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
 cnf2Clauses clauses (conj,_) = toProducer $ filter check $ build clauses
-  where check c = any (`S.member` conjS) $ build (clause2CNF c)
+  where check c = any (`S.member` conjS) $ map (modify Intro.sort) $ build (clause2CNF c)
         conjS = S.fromList $ V.toList conj
 
 runClauseSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF -> IO (Either CNF (S.Set AtomI))

@@ -58,7 +58,7 @@ combineCNF (conj1,mi1) (conj2,mi2)
 {-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj
-atoms2Conj = U.fromList . map fromIntegral . sortBy (compare `on` abs)
+atoms2Conj = U.fromList . map fromIntegral
 
 conj2Line :: Conj -> BS.ByteString
 conj2Line ls = BS.pack $ unwords (map show (U.toList ls)) ++ " 0\n"
