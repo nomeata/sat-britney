@@ -194,13 +194,13 @@ runBritney config = do
         let binCount = IxM.size (depends pi)
             depCount = sum $ map length $ IxM.elems (depends pi)
 
+        {-
         hPrintf stderr "Non-conflict encoding: %d atoms and %d clauses\n" binCount depCount
 
         hPrintf stderr "Naive encoding (calculated): %d atoms and %d clauses\n" 
             (binCount^2)
             (binCount * depCount)
 
-        {-
         hPrintf stderr "Encoding considering cones: %d atoms and %d clauses\n" 
             (binCount + (sum $ map IxS.size $ IxM.elems $ transitiveHull (dependsRel pi)))
             (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ transitiveHull (dependsRel pi))
@@ -214,7 +214,7 @@ runBritney config = do
             (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull pi))
             (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull pi)
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts pi) ++ " conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts." --  and " ++ show (IxS.size (hasReallyBadConflictInDeps pi)) ++ " have really bad conflicts."
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts pi) ++ " conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts."
 
     hPutStrLn stderr $ "Size of dependency hulls of packages with bad dependencies: " 
         -- ++ show (IxM.fold ((+) . IxS.size) 0 $ IxM.filterWithKey (\k _ -> k `IxS.member` hasReallyBadConflictInDeps pi) (dependsHull pi))
