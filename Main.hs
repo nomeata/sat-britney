@@ -49,7 +49,7 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False False AsLargeAsPossible
+defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
@@ -117,9 +117,6 @@ opts =
     , Option "" ["heidi"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { heidiH = h })) "FILE")
       "print result in heidi format to this file"
-    , Option "" ["full-dependencies"]
-      (NoArg (\config -> return (config { fullDependencies = True })))
-      "model dependency graph per package"
     , Option "" ["stats"]
       (NoArg (\config -> return (config { showStats = True })))
       "print stats for various modelings of the problem"

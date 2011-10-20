@@ -255,7 +255,6 @@ restrictRel rel set = IxM.fromAscList $
 
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
-    if not (fullDependencies config) then ai else
     foldl' (\ai (p,s) -> 
         foldl' (\ ai d -> fst (ai `addInst` Inst p d)) ai (IxS.toList s)
     ) ai $
@@ -343,18 +342,11 @@ transitionRules'
   :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
      -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
 transitionRules' config ai unstable testing general pi nc =
-    if fullDependencies config then
-    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ++ hardDependenciesFull
-    , toProducer $ softDependenciesFull
+    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ++ hardDependencies
+    , toProducer $ softDependencies
     , toProducer $ desired
     , toProducer $ unwanted
     )
-    else error "unsupported" {-
-    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
-    , toProducer $ conflictClauses ++ softDependenciesNonFull
-    , desired
-    , unwanted
-    ) -}
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -377,7 +369,8 @@ transitionRules' config ai unstable testing general pi nc =
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
             ]
-        softDependenciesFull =
+        softDependencies =
+            {-# SCC "softDependencies" #-}
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxS.toList binariesUnion,
                 forI `IxM.member` dependsBadHull pi,
@@ -389,15 +382,8 @@ transitionRules' config ai unstable testing general pi nc =
                 (disjunction, reason) <- depends,
                 let deps = map genIndex disjunction
             ]
-        softDependenciesNonFull =
-            -- Any package needs to be installable
-            [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList (depends pi),
-                (disjunction, reason) <- depends,
-                let deps = map genIndex disjunction
-            ]
-        hardDependenciesFull =
-            {-# SCC "dependencies" #-}
+        hardDependencies =
+            {-# SCC "hardDependencies" #-}
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
@@ -488,19 +474,6 @@ transitionRules' config ai unstable testing general pi nc =
             [Not atom ("it was not in testing before") |
                 
                 atom <- genIndex <$> IxS.toList forbiddenBugs
-            ]
-
-        -- Some duplication wrt above code
-        obsoleteSource = IxS.fromList [ src |
-                (src, bins) <- IxM.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable IxM.! src]
-            ]
-        youngSource = IxS.fromList [ src |
-                src <- IxM.keys buildsOnlyUnstable,
-                Just age <- [src `M.lookup` ages general],
-                let minAge = fromMaybe (defaultMinAge config) $
-                             urgencies general `combine` minAges config $ src,
-                age <= minAge
             ]
 
         desired  =  fmap genIndex $ IxS.toList $

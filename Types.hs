@@ -222,7 +222,6 @@ data Config = Config
     , minAges :: Map Urgency Age
     , defaultMinAge :: Age
 
-    , fullDependencies :: Bool
     , showStats :: Bool
 
     , transSize :: TransSize
