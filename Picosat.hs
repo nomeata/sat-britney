@@ -55,9 +55,7 @@ type Conj = U.Vector Int32
 type AssignmentMask = UArray Int Bool
 
 combineCNF :: CNF -> CNF -> CNF
-combineCNF (conj1,mi1) (conj2,mi2)
---    | mi1 /= mi2  = error "combineCNF: maxVar do not agree"
-    | otherwise   = (conj1 V.++ conj2 , mi1)
+combineCNF (conj1,mi1) (conj2,mi2) = (conj1 V.++ conj2 , mi1 `max` mi2)
 {-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj

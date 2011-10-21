@@ -190,10 +190,10 @@ runBritney config = do
     let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
         unwanted = unwantedAtoms unstable testing
-        cnfHappy = clauses2CNF (maxIndex ai) transRules
+        cnfTrans = clauses2CNF (maxIndex ai) transRules
 
     hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."
-    result <- runClauseSAT (maxIndex ai) (build desired) (build unwanted) cnfHappy
+    result <- runClauseSAT (maxIndex ai) (build desired) (build unwanted) cnfTrans
     maxTransition <- case result of 
         Left musCNF -> do
             hPutStrLn stderr "Not even in happy world, things can migrate:"
@@ -252,13 +252,11 @@ runBritney config = do
 
     let depHard = hardDependencyRules config aiD (PackageInfoIn{..})
         depSoft = softDependencyRules config aiD (PackageInfoIn{..})
-        rules :: Producer (Clause AtomI)
-        rules = transRules `concatP` depHard
         relaxable = depSoft
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
-                 rules
-        cnfT = clauses2CNF (maxIndex aiD) rulesT
+                 depHard
+        cnfT = clauses2CNF (maxIndex aiD) rulesT `combineCNF` cnfTrans
         relaxableClauses = clauses2CNF (maxIndex aiD) relaxable
 
     hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
@@ -266,7 +264,9 @@ runBritney config = do
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp aiD) (build rules)
+        mapM_ (hPrint h . nest 4 . pp aiD) (build transRules)
+        hPutStrLn h ""
+        mapM_ (hPrint h . nest 4 . pp aiD) (build rulesT)
         hPutStrLn h ""
         mapM_ (hPrint h . nest 4 . pp aiD) (build relaxable)
         hFlush h
@@ -289,8 +289,8 @@ runBritney config = do
 
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
-        cleanedRules = toProducer extraRules `concatP` rules
-        cnf = clauses2CNF (maxIndex aiD) cleanedRules `combineCNF` leftConj
+        cleanedRules = toProducer extraRules `concatP` depHard
+        cnf = clauses2CNF (maxIndex aiD) cleanedRules `combineCNF` leftConj `combineCNF` cnfTrans
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
@@ -299,6 +299,7 @@ runBritney config = do
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
+        mapM_ (hPrint h . nest 4 . pp aiD) (build transRules)
         mapM_ (hPrint h . nest 4 . pp aiD) (build cleanedRules)
         mapM_ (hPrint h . nest 4 . pp aiD) (build (cnf2Clauses relaxable leftConj))
         hFlush h
@@ -324,7 +325,7 @@ runBritney config = do
             hPutStrLn stderr $
                 "No suitable set of packages could be determined, " ++
                 "because the following requirements conflict:"
-            let mus = cnf2Clauses (cleanedRules `concatP` relaxable) musCNF 
+            let mus = cnf2Clauses (transRules `concatP` cleanedRules `concatP` relaxable) musCNF 
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map (pp aiD) (build mus))))
