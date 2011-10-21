@@ -317,52 +317,9 @@ findUnmodified config unstable testing nonCandidates =
 -- Wrapper around transitionRules' that prevents sharing. We _want_ to
 -- recalculate the rules everytime 'build' is called upon the producer.
 transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
-     -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
-transitionRules config ai unstable testing general pi nc =
-    ( hardTransitionRules config ai unstable testing general pi nc 
-    , softTransitionRules config ai unstable testing general pi nc 
-    , desiredAtoms config ai unstable testing general pi nc 
-    , unwantedAtoms config ai unstable testing general pi nc 
-    )
-
-hardTransitionRules 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-hardTransitionRules config ai unstable testing general pi nc f x =
-    let (r,_,_,_) = transitionRules' config ai unstable testing general pi nc
-    in r f x
-
-softTransitionRules 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
-     -> Producer (Clause AtomI)
-softTransitionRules config ai unstable testing general pi nc f x =
-    let (_,r,_,_) = transitionRules' config ai unstable testing general pi nc
-    in r f x
-
-desiredAtoms 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
-      -> Producer AtomI
-desiredAtoms config ai unstable testing general pi nc f x =
-    let (_,_,a,_) = transitionRules' config ai unstable testing general pi nc
-    in a f x
-
-unwantedAtoms 
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
-      -> Producer AtomI
-unwantedAtoms config ai unstable testing general pi nc f x =
-    let (_,_,_,a) = transitionRules' config ai unstable testing general pi nc
-    in a f x
-
-
-transitionRules'
-  :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
-     -> (Producer (Clause AtomI), Producer (Clause AtomI), Producer AtomI, Producer AtomI)
-transitionRules' config ai unstable testing general pi nc =
-    ( toProducer $ keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ++ hardDependencies
-    , toProducer $ softDependencies
-    , toProducer $ desired
-    , toProducer $ unwanted
-    )
+transitionRules config ai unstable testing general pi nc = toProducer $
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy 
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -384,45 +341,6 @@ transitionRules' config ai unstable testing general pi nc =
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
-            ]
-        softDependencies =
-            {-# SCC "softDependencies" #-}
-            [Implies (genIndex forI) [instI] "the package ought to be installable." |
-                forI <- IxM.keys (dependsBadHull pi),
-                let instI = genIndex . fromJustNote "X" . indexInst ai . Inst forI $ forI
-            ] ++
-            [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList (depends pi),
-                binI `IxM.notMember` dependsBadHull pi,
-                (disjunction, reason) <- depends,
-                let deps = map genIndex disjunction
-            ]
-        hardDependencies =
-            {-# SCC "hardDependencies" #-}
-            -- Dependencies
-            [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
-                (disjunction, reason) <- depends pi IxM.! binI,
-                let deps = [ case indexInst ai (Inst forI depI) of
-                                Just instI -> genIndex instI
-                                Nothing    -> genIndex depI
-                           | depI <- disjunction ]
-            ] ++
-            [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
-                (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
-                (disjunction, reason) <- conflicts pi IxM.! binI,
-                confl <- disjunction,
-                confl `IxS.member` binIs,
-                let conflI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ confl
-            ] ++
-            [ Implies instI [genIndex binI] "the package needs to be present" |
-                (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
             ]
         conflictClauses =
             {-# SCC "conflictClauses" #-}
@@ -491,12 +409,6 @@ transitionRules' config ai unstable testing general pi nc =
                 atom <- genIndex <$> IxS.toList forbiddenBugs
             ]
 
-        desired  =  fmap genIndex $ IxS.toList $
-            binaries unstable `IxS.difference` binaries testing
-
-        unwanted = fmap genIndex $ IxS.toList $
-            sources testing `IxS.difference` sources unstable
-
         sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
         binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
         -- We assume that the dependency information is the same, even from different suites
@@ -516,6 +428,60 @@ transitionRules' config ai unstable testing general pi nc =
         forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `IxS.difference` bugsInTesting
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
+
+hardDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
+hardDependencyRules config ai pi = toProducer $ hardDependencies
+  where hardDependencies =
+            {-# SCC "hardDependencies" #-}
+            -- Dependencies
+            [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                binI <- IxS.toList binIs,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
+                (disjunction, reason) <- depends pi IxM.! binI,
+                let deps = [ case indexInst ai (Inst forI depI) of
+                                Just instI -> genIndex instI
+                                Nothing    -> genIndex depI
+                           | depI <- disjunction ]
+            ] ++
+            [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
+                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                binI <- IxS.toList binIs,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
+                (disjunction, reason) <- conflicts pi IxM.! binI,
+                confl <- disjunction,
+                confl `IxS.member` binIs,
+                let conflI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ confl
+            ] ++
+            [ Implies instI [genIndex binI] "the package needs to be present" |
+                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                binI <- IxS.toList binIs,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
+            ]
+
+softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
+softDependencyRules config ai pi = toProducer $ softDependencies
+  where softDependencies =
+            {-# SCC "softDependencies" #-}
+            [Implies (genIndex forI) [instI] "the package ought to be installable." |
+                forI <- IxM.keys (dependsBadHull pi),
+                let instI = genIndex . fromJustNote "X" . indexInst ai . Inst forI $ forI
+            ] ++
+            [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
+                (binI,depends) <- IxM.toList (depends pi),
+                binI `IxM.notMember` dependsBadHull pi,
+                (disjunction, reason) <- depends,
+                let deps = map genIndex disjunction
+            ]
+
+
+desiredAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
+desiredAtoms unstable testing = toProducer $
+    fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing
+
+unwantedAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
+unwantedAtoms unstable testing = toProducer $ 
+    fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
 
 -- |Check if a version number satisfies a version requirement.
 checkVersionReq :: ST.Maybe VersionReq -> Maybe DebianVersion -> Bool

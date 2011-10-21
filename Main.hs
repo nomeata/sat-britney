@@ -224,8 +224,14 @@ runBritney config = do
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
-    let (rules, relaxable, desired, unwanted)
-            = transitionRules config ai unstable testing general (PackageInfoIn{..}) nonCandidates
+    let transRules = transitionRules config ai unstable testing general (PackageInfoIn{..}) nonCandidates
+        desired = desiredAtoms unstable testing
+        unwanted = unwantedAtoms unstable testing
+        depHard = hardDependencyRules config ai (PackageInfoIn{..})
+        depSoft = softDependencyRules config ai (PackageInfoIn{..})
+        rules :: Producer (Clause AtomI)
+        rules = transRules `concatP` depHard
+        relaxable = depSoft
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  rules
