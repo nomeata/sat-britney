@@ -178,20 +178,46 @@ runBritney config = do
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
     let hintResults = processHints config ai unstable testing general hints
 
-    let PackageInfoOut{..} = resolvePackageInfo config ai nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
-        builtBy = calculateBuiltBy [testingRPI, unstableRPI]
+    let builtBy = calculateBuiltBy [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
         nonCandidates = findNonCandidates config ai unstable testing general builtBy hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
-        unmod = findUnmodified config unstable testing nonCandidateSet
 
 
     hPutStrLn stderr $ "In unstable are " ++ show (IxS.size (sources unstable `IxS.difference` sources testing)) ++ " new sources, out of which " ++ show (IxS.size nonCandidateSet) ++ " are not candidates."
 
-    hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified" {- ++ ", but " ++ show (IxS.size (affected pi)) ++ " are possibly affected"-} ++ "."
+
+    let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
+        desired = desiredAtoms unstable testing
+        unwanted = unwantedAtoms unstable testing
+        cnfHappy = clauses2CNF (maxIndex ai) transRules
+
+    hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."
+    result <- runClauseSAT (maxIndex ai) (build desired) (build unwanted) cnfHappy
+    maxTransition <- case result of 
+        Left musCNF -> do
+            hPutStrLn stderr "Not even in happy world, things can migrate:"
+            let mus = cnf2Clauses transRules musCNF 
+            print (nest 4 (vcat (map (pp ai) (build mus))))
+            exitFailure
+        Right (newAtomIs) -> return $ IxS.fromDistinctAscList $ S.toAscList newAtomIs
+
+    hPutStrLn stderr $ "Difference between testing and ideal testing: " ++
+        show (IxS.size (maxTransition `IxS.difference` atoms testing)) ++ " atoms added, " ++ 
+        show (IxS.size (atoms testing `IxS.difference` maxTransition)) ++ " atoms removed, " ++
+        show (IxS.size (atoms testing `IxS.intersection` maxTransition)) ++ " atoms remain."
 
     mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
         hPutStrLn stderr $ "ERROR: " ++ show (pp ai atom) ++ " is a non-candidate in testin!"
+
+    -- From here on, we look at dependencies
+
+    let unmod = IxS.generalize maxTransition `IxS.intersection` binaries testing
+    let PackageInfoOut{..} = resolvePackageInfo config ai nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
+    let aiD = generateInstallabilityAtoms config (PackageInfoIn{..}) ai
+
+    hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified, but " ++ show (IxS.size affected) ++ " are possibly affected."
+
 
     when (showStats config) $ do
         let binCount = IxM.size depends
@@ -222,14 +248,9 @@ runBritney config = do
     hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
         (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
 
-    let aiD = generateInstallabilityAtoms config (PackageInfoIn{..}) ai
-
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex aiD)) ++ " atoms."
 
-    let transRules = transitionRules config aiD unstable testing general builtBy nonCandidates
-        desired = desiredAtoms unstable testing
-        unwanted = unwantedAtoms unstable testing
-        depHard = hardDependencyRules config aiD (PackageInfoIn{..})
+    let depHard = hardDependencyRules config aiD (PackageInfoIn{..})
         depSoft = softDependencyRules config aiD (PackageInfoIn{..})
         rules :: Producer (Clause AtomI)
         rules = transRules `concatP` depHard

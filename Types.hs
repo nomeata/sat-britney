@@ -208,7 +208,8 @@ data PackageInfo =
     | PackageInfoIn {
         depends :: IxM.Map Binary [([BinI], ByteString)],
         dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)]
+        conflicts :: IxM.Map Binary [([BinI], ByteString)],
+        affected :: IxS.Set Binary
         }
     deriving (Show)
 

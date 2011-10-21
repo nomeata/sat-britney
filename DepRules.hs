@@ -182,7 +182,11 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
         hasConflict = {-# SCC "hasConflict" #-} IxM.keysSet conflictsRel
 
         hasConflictInDepsProp = {-# SCC "hasConflictInDepsProp" #-} IxS.seal hasConflictInDeps
-        hasConflictInDeps = {-# SCC "hasConflictInDeps" #-} go hasConflict IxS.empty
+        hasConflictInDeps = {-# SCC "hasConflictInDeps" #-}
+            -- Here we through out the packages that are not affected by the
+            -- transition.
+            IxS.intersection affected $
+            go hasConflict IxS.empty
           where go new cid | IxS.null new = {-# SCC "where" #-} cid
                            | otherwise = 
                     let new' = {-# SCC "let" #-} IxS.unions $ mapMaybe (`IxM.lookup` revDependsRel) $ IxS.toList new
@@ -305,6 +309,7 @@ softDependencyRules config ai pi = toProducer $ softDependencies
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
+                binI `IxS.member` affected pi,
                 binI `IxM.notMember` dependsBadHull pi,
                 (disjunction, reason) <- depends,
                 let deps = map genIndex disjunction
