@@ -50,7 +50,7 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False AsLargeAsPossible
+defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False 0 AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = Arch "i386"
 
@@ -121,6 +121,9 @@ opts =
     , Option "" ["stats"]
       (NoArg (\config -> return (config { showStats = True })))
       "print stats for various modelings of the problem"
+    , Option "" ["offset"]
+      (ReqArg (\i config -> return (config { offset = read i })) "DAYS")
+      "Assume we are this many days in the future"
     , Option "" ["migrate"]
       (ReqArg (\ss config -> parseAtom ss >>= \s -> return (config { migrateThis = Just s })) "PKG")
       "find a migration containing this package.\nIf it is a source package, it ignores this package's age"

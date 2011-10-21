@@ -219,6 +219,7 @@ parseAgeFile config ai = do
     now <- case True of -- whether to use file timestamp for "now"
         True -> utctDay . fromClockTime <$> getModificationTime filename
         False -> utctDay <$> getCurrentTime
+    let now' = offset config `addDays`now
     let epochDay = fromGregorian 1970 1 1
     return $ M.fromList [ (srcI, Age age) | 
             line <- BS.lines dateS,
@@ -227,7 +228,7 @@ parseAgeFile config ai = do
             not ("upl" `BS.isPrefixOf` version),
             let src = Source (SourceName pkg) (DebianVersion version),
             Just srcI <- [ai `indexSrc` src],
-            let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
+            let age = {-# SCC "ageCalc" #-} fromIntegral $ now' `diffDays` (int dayS `addDays` epochDay)
             ]
 
 parseDependency :: BS.ByteString -> Dependency

@@ -232,6 +232,7 @@ data Config = Config
     , defaultMinAge :: Age
 
     , showStats :: Bool
+    , offset :: Integer
 
     , transSize :: TransSize
 
