@@ -184,7 +184,7 @@ data SuiteInfo = SuiteInfo {
 data RawPackageInfo = RawPackageInfo {
     binaryNamesR :: Map (BinName, Arch) [BinI], -- Duplicate from SuiteInfo
     builtByR :: IxM.Map Binary SrcI,
-    dependsR :: IxM.Map Binary Dependency,
+    dependsR :: [(BinI, Dependency)],
     providesR :: Map (BinName, Arch) [BinI],
     conflictsR :: IxM.Map Binary Dependency,
     breaksR :: IxM.Map Binary Dependency

@@ -103,7 +103,7 @@ parseSuite config ai dir = do
 
     let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) $ s [ (src,[bin]) | (bin,src) <- builtByList ]
 
-    let depends = {-# SCC "depends" #-} IxM.fromList $ s binaryDepends
+    let depends = {-# SCC "depends" #-} binaryDepends
 
     let provides = {-# SCC "provides" #-} M.fromListWith (++) $ s binaryProvides
 

@@ -171,12 +171,6 @@ runBritney config = do
 
     general <- parseGeneralInfo config ai
 
-    {-
-    let (unstableThin, unstableThinRPI) = thinSuite config unstable unstableRPI general
-    hPutStrLn stderr $ "Thinning unstable to " ++ show (IxS.size (sources unstableThin)) ++
-        " sources and " ++ show (IxS.size (binaries unstableThin)) ++ " binaries."
-    -}
-
     hints <- readHintFiles config
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
     let hintResults = processHints config ai unstable testing general hints

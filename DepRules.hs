@@ -29,39 +29,6 @@ import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
-thinSuite :: Config -> SuiteInfo -> RawPackageInfo -> GeneralInfo -> (SuiteInfo, RawPackageInfo)
-thinSuite config suite rawPackageInfo general = (SuiteInfo
-    { sources = sources'
-    , binaries = binaries'
-    , atoms = atoms'
-    , sourceNames =  M.map (filter (`IxS.member` sources'))  $ sourceNames suite
-    , binaryNames =  M.map (filter (`IxS.member` binaries')) $ binaryNames suite
-    , builds =       filterKeySrc $ builds suite
-    , newerSources = filterKeySrc $
-                     IxM.map (filter (`IxS.member` sources')) $ newerSources suite
-    , bugs =         filterKeyAtoms $ bugs suite
-    }, RawPackageInfo
-    { providesR =    M.map (filter (`IxS.member` binaries')) $ providesR rawPackageInfo
-    , breaksR =      filterKeyBin $ breaksR rawPackageInfo
-    , builtByR =     filterKeyBin $ builtByR rawPackageInfo
-    , dependsR =     filterKeyBin $ dependsR rawPackageInfo
-    , conflictsR =   filterKeyBin $ conflictsR rawPackageInfo
-    , binaryNamesR = M.map (filter (`IxS.member` binaries')) $ binaryNamesR rawPackageInfo
-    })
-  where sources' = IxS.filter (not . isTooYoung) $ sources suite
-        binaries' = IxS.filter ((`IxS.member` sources') . (builtByR rawPackageInfo IxM.!)) $ binaries suite
-        atoms' = IxS.generalize sources' `IxS.union` IxS.generalize binaries'
-
-        isTooYoung src = case src `M.lookup` ages general of
-            Just age -> let minAge = fromMaybe (defaultMinAge config) $
-                                urgencies general `combine` minAges config $ src
-                        in  age <= minAge
-            Nothing -> False
-
-        filterKeyBin = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') 
-        filterKeySrc = IxM.filterWithKey (\k _ -> k `IxS.member` sources') 
-        filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
-
 resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageInfoOut{..}
   where buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
@@ -74,18 +41,19 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
             concatMap (buildsUnion IxM.!) $
             IxS.toList nonCandidates
         
-        depends = {-# SCC "depends" #-} IxM.mapWithKey 
-                    (\binI -> let Binary _ _ arch = ai `lookupBin` binI
-                              in map $ first $
-                                filter (`IxS.notMember` nonCandidateBins) .
-                                nub .
-                                concatMap (resolveDep arch)
+        depends = {-# SCC "depends" #-} IxM.fromList $  
+                    map (\(binI,deps) -> 
+                        let Binary _ _ arch = ai `lookupBin` binI
+                        in (binI, map (first
+                            (filter (`IxS.notMember` nonCandidateBins) .
+                            nub .
+                            concatMap (resolveDep arch)) )
+                            deps)
                     ) $
-                    IxM.unions $
-                    map (IxM.filterWithKey $ \k v -> 
+                    filter (\(k,v) -> 
                             k `IxS.notMember` nonCandidateBins
                         ) $
-                    map dependsR rawPackageInfos
+                    concatMap dependsR rawPackageInfos
 
         dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
                      IxM.map (IxS.fromList . concatMap fst) $
