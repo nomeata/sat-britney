@@ -138,18 +138,17 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
                     ]
         -}
 
-        dependsBadHull = {-# SCC "dependsBadHull" #-} IxM.fromListWith IxS.union
-                [ (p,depsHull)
-                | (p,conflicts) <- IxM.toList relevantConflicts
-                , let deps = dependsRelWithConflictsHull IxM.! p
-                , let revDependsRel' = restrictRel revDependsRel deps
-                , (c1,c2) <- S.toList conflicts
-
-                , let depsHull =
-                        (IxM.findWithDefault IxS.empty c1 revDependsHull `IxS.intersection` deps) `IxS.union`
-                        (IxM.findWithDefault IxS.empty c2 revDependsHull `IxS.intersection` deps)
-                , if p `IxS.member` depsHull then True else error "p not in depsHull"
-                ]
+        dependsBadHull = {-# SCC "dependsBadHull" #-}
+            flip IxM.mapWithKey relevantConflicts $ \p conflicts ->
+                let deps = dependsRelWithConflictsHull IxM.! p
+                    revDependsRel' = restrictRel revDependsRel deps
+                in IxS.seal $ IxS.unions [ hull
+                    | (c1,c2) <- S.toList conflicts
+                    , let hull =
+                            (IxM.findWithDefault IxS.empty c1 revDependsHull `IxS.intersection` deps) `IxS.union`
+                            (IxM.findWithDefault IxS.empty c2 revDependsHull `IxS.intersection` deps)
+                    , if p `IxS.member` hull then True else error "p not in depsHull"
+                    ]
 
 
         conflicts = {-# SCC "conflicts" #-} IxM.unionWith (++)
