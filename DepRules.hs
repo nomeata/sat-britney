@@ -122,18 +122,20 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
 
 
         conflicts = {-# SCC "conflicts" #-} IxM.unionWith (++)
-                    ( IxM.mapWithKey
-                        (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
-                                  in map $ first $ nub . concatMap (resolveConf pkg arch)
+                    ( IxM.fromList $
+                        map (\(binI,deps) ->
+                            let Binary pkg _ arch = ai `lookupBin` binI
+                            in (binI, map (first $ nub . concatMap (resolveConf pkg arch)) deps)
                                                        -- . filter depRelHasUpperBound
-                        )
-                        (IxM.unions (map conflictsR rawPackageInfos))
+                        ) $
+                        concatMap conflictsR rawPackageInfos
                     )
-                    ( IxM.mapWithKey
-                        (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
-                                  in map $ first $ nub . concatMap (resolveConf pkg arch)
-                        )
-                        (IxM.unions (map breaksR rawPackageInfos))
+                    ( IxM.fromList $
+                        map (\(binI,deps) ->
+                            let Binary pkg _ arch = ai `lookupBin` binI
+                            in (binI, map (first $ nub . concatMap (resolveConf pkg arch)) deps)
+                        ) $
+                        concatMap breaksR rawPackageInfos
                     )
 
         depRelHasUpperBound (DepRel _ (ST.Just vr) _ ) = {-# SCC "depRelHasUpperBound" #-} hasUpperBound vr

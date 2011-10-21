@@ -186,8 +186,8 @@ data RawPackageInfo = RawPackageInfo {
     builtByR :: IxM.Map Binary SrcI,
     dependsR :: [(BinI, Dependency)],
     providesR :: Map (BinName, Arch) [BinI],
-    conflictsR :: IxM.Map Binary Dependency,
-    breaksR :: IxM.Map Binary Dependency
+    conflictsR :: [(BinI, Dependency)],
+    breaksR :: [(BinI, Dependency)]
 }
     deriving (Show)
     
