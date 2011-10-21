@@ -215,7 +215,7 @@ runBritney config = do
             (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull))
             (sum $ map (length . (depends IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull)
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size hasConflict) ++ " packages take part in " ++ show (sum $ map (sum . map (IxS.size . fst)) $ IxM.elems $ conflicts) ++ " conflicts, " ++ show (IxS.size hasConflictInDeps) ++ " have conflicts in dependencies, of which " ++ show (IxM.size dependsBadHull) ++ " have bad conflicts."
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size hasConflict) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts) ++ " conflicts, " ++ show (IxS.size hasConflictInDeps) ++ " have conflicts in dependencies, of which " ++ show (IxM.size dependsBadHull) ++ " have bad conflicts."
 
     hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
         (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
