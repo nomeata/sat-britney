@@ -336,6 +336,11 @@ runBritney config = do
             hPutStrLn stderr $ "Difference between testing and new testing:"
             differenceStats testing unstable newAtomIis
 
+            let unmodMissing = unmod `IxS.difference` IxS.generalize newAtomIis
+            unless (IxS.null unmodMissing) $ do
+                hPutStrLn stderr $ "Something was wrong with my assumptions, these binaries were expected not to be modified:"
+                hPutStrLn stderr $ show $ punctuate (text ", ") $ map (pp ai) $ IxS.toList unmodMissing
+
             mbDo (differenceH config) $ \h -> do
                 let newAtoms = S.map (aiD `lookupAtom`) newAtomIs
                 let (newSource, newBinaries, _) = splitAtoms newAtoms
