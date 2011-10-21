@@ -79,12 +79,10 @@ findUnmodified config unstable testing nonCandidates =
             concatMap (builds unstable IxM.!) $
             IxS.toList nonCandidates
 
--- Wrapper around transitionRules' that prevents sharing. We _want_ to
--- recalculate the rules everytime 'build' is called upon the producer.
 transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-transitionRules config ai unstable testing general builtBy nc = toProducer $
-    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy 
+transitionRules config ai unstable testing general builtBy nc f x = (toProducer $
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ) f x
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -188,12 +186,12 @@ transitionRules config ai unstable testing general builtBy nc = toProducer $
 
 
 desiredAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
-desiredAtoms unstable testing = toProducer $
-    fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing
+desiredAtoms unstable testing f x = (toProducer $
+    fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing) f x
 
 unwantedAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
-unwantedAtoms unstable testing = toProducer $ 
-    fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
+unwantedAtoms unstable testing f x = (toProducer $ 
+    fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable) f x
 
 combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
 combine m1 m2 x = (x `M.lookup` m1) >>= (`M.lookup` m2)

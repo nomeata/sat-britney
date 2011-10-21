@@ -193,7 +193,7 @@ runBritney config = do
     let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
         unwanted = unwantedAtoms unstable testing
-        cnfTrans = clauses2CNF (maxIndex ai) transRules
+        cnfTrans = {-# SCC "cnfTrans" #-} clauses2CNF (maxIndex ai) transRules
 
     hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."
     result <- runClauseSAT (maxIndex ai) (build desired) (build unwanted) cnfTrans
@@ -360,6 +360,7 @@ splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
   where select (SrcAtom x) ~(l1,l2,l3) = (x:l1,l2,l3)
         select (BinAtom x) ~(l1,l2,l3) = (l1,x:l2,l3)
         select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
+        select _ x = x
 
 setMap f = S.fromList . map f . IxS.toList
 

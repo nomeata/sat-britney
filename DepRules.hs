@@ -270,7 +270,7 @@ generateInstallabilityAtoms config pi ai =
     IxM.toList (dependsBadHull pi)
 
 hardDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
-hardDependencyRules config ai pi = toProducer $ hardDependencies
+hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x 
   where hardDependencies =
             {-# SCC "hardDependencies" #-}
             -- Dependencies
