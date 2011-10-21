@@ -191,9 +191,10 @@ data RawPackageInfo = RawPackageInfo {
 }
     deriving (Show)
     
+type BuiltBy = IxM.Map Binary SrcI
+
 data PackageInfo =
     PackageInfoOut {
-        builtBy :: IxM.Map Binary SrcI,
         depends :: IxM.Map Binary [([BinI], ByteString)],
         dependsRel :: IxM.Map Binary (IxS.Set Binary),
         -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
@@ -205,7 +206,6 @@ data PackageInfo =
         affected :: IxS.Set Binary
         }
     | PackageInfoIn {
-        builtBy :: IxM.Map Binary SrcI,
         depends :: IxM.Map Binary [([BinI], ByteString)],
         dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
         conflicts :: IxM.Map Binary [([BinI], ByteString)]

@@ -155,17 +155,17 @@ main = do
 runBritney config = do
     let ai1 = emptyIndex
     (unstable, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
-    (testing, testingRPI, ai3)  <- parseSuite config ai2 (dir config </> "testing")
+    (testing, testingRPI, ai)  <- parseSuite config ai2 (dir config </> "testing")
 
-    hPutStrLn stderr $ "AtomIndex knows about " ++ show (unIndex (maxIndex ai3)) ++ " atoms."
+    hPutStrLn stderr $ "AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
     config <- case migrateThis config of
         Nothing -> return config
-        Just atom -> case ai3 `indexAtom` atom of 
+        Just atom -> case ai `indexAtom` atom of 
             Nothing -> hPutStrLn stderr ("Package " ++ show atom ++ " not known") >> exitFailure
             Just i -> return $ config { migrateThisI = Just i }
 
-    general <- parseGeneralInfo config ai3
+    general <- parseGeneralInfo config ai
 
     {-
     let (unstableThin, unstableThinRPI) = thinSuite config unstable unstableRPI general
@@ -175,11 +175,12 @@ runBritney config = do
 
     hints <- readHintFiles config
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
-    let hintResults = processHints config ai3 unstable testing general hints
+    let hintResults = processHints config ai unstable testing general hints
 
-    let PackageInfoOut{..} = resolvePackageInfo config ai3 nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
+    let PackageInfoOut{..} = resolvePackageInfo config ai nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
+        builtBy = calculateBuiltBy [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
-        nonCandidates = findNonCandidates config ai3 unstable testing general (PackageInfoIn{..}) hintResults
+        nonCandidates = findNonCandidates config ai unstable testing general builtBy hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
         unmod = findUnmodified config unstable testing nonCandidateSet
 
@@ -189,7 +190,7 @@ runBritney config = do
     hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified" {- ++ ", but " ++ show (IxS.size (affected pi)) ++ " are possibly affected"-} ++ "."
 
     mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
-        hPutStrLn stderr $ "ERROR: " ++ show (pp ai3 atom) ++ " is a non-candidate in testin!"
+        hPutStrLn stderr $ "ERROR: " ++ show (pp ai atom) ++ " is a non-candidate in testin!"
 
     when (showStats config) $ do
         let binCount = IxM.size depends
@@ -220,32 +221,32 @@ runBritney config = do
     hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
         (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
 
-    let ai = generateInstallabilityAtoms config (PackageInfoIn{..}) ai3
+    let aiD = generateInstallabilityAtoms config (PackageInfoIn{..}) ai
 
-    hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
+    hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex aiD)) ++ " atoms."
 
-    let transRules = transitionRules config ai unstable testing general (PackageInfoIn{..}) nonCandidates
+    let transRules = transitionRules config aiD unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
         unwanted = unwantedAtoms unstable testing
-        depHard = hardDependencyRules config ai (PackageInfoIn{..})
-        depSoft = softDependencyRules config ai (PackageInfoIn{..})
+        depHard = hardDependencyRules config aiD (PackageInfoIn{..})
+        depSoft = softDependencyRules config aiD (PackageInfoIn{..})
         rules :: Producer (Clause AtomI)
         rules = transRules `concatP` depHard
         relaxable = depSoft
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  rules
-        cnfT = clauses2CNF (maxIndex ai) rulesT
-        relaxableClauses = clauses2CNF (maxIndex ai) relaxable
+        cnfT = clauses2CNF (maxIndex aiD) rulesT
+        relaxableClauses = clauses2CNF (maxIndex aiD) relaxable
 
     hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
         show (length (build relaxable)) ++ " soft clauses, with " ++ show (length (build desired)) ++ " desired and " ++ show (length (build unwanted)) ++ " unwanted atoms."
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp ai) (build rules)
+        mapM_ (hPrint h . nest 4 . pp aiD) (build rules)
         hPutStrLn h ""
-        mapM_ (hPrint h . nest 4 . pp ai) (build relaxable)
+        mapM_ (hPrint h . nest 4 . pp aiD) (build relaxable)
         hFlush h
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
@@ -254,20 +255,20 @@ runBritney config = do
         Left musCNF -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
             let mus = cnf2Clauses relaxable musCNF 
-            hPrint stderr $ nest 4 (vcat (map (pp ai) (build mus)))
+            hPrint stderr $ nest 4 (vcat (map (pp aiD) (build mus)))
             exitFailure
         Right (leftConj,removeConjs) -> do
             hPutStrLn stderr $ show (V.length (fst removeConjs)) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
                 let removeClause = cnf2Clauses relaxable removeConjs 
-                hPrint h $ nest 4 (vcat (map (pp ai) (build removeClause)))
+                hPrint h $ nest 4 (vcat (map (pp aiD) (build removeClause)))
                 hFlush h
             return leftConj
 
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
         cleanedRules = toProducer extraRules `concatP` rules
-        cnf = clauses2CNF (maxIndex ai) cleanedRules `combineCNF` leftConj
+        cnf = clauses2CNF (maxIndex aiD) cleanedRules `combineCNF` leftConj
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
@@ -276,13 +277,13 @@ runBritney config = do
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp ai) (build cleanedRules)
-        mapM_ (hPrint h . nest 4 . pp ai) (build (cnf2Clauses relaxable leftConj))
+        mapM_ (hPrint h . nest 4 . pp aiD) (build cleanedRules)
+        mapM_ (hPrint h . nest 4 . pp aiD) (build (cnf2Clauses relaxable leftConj))
         hFlush h
 
     {-
     hPutStrLn stderr $ "Desired packages:"
-    hPrint stderr $ nest 4 (vcat (map (pp ai) desired))
+    hPrint stderr $ nest 4 (vcat (map (pp aiD) desired))
     -}
 
     let (desired', unwanted') = case transSize config of
@@ -293,9 +294,9 @@ runBritney config = do
 
     hPutStrLn stderr $ "Running main picosat run"
     result <- if transSize config == ManySmall
-        then runClauseMINMAXSAT (maxIndex ai) (build desired') (build unwanted') cnf
+        then runClauseMINMAXSAT (maxIndex aiD) (build desired') (build unwanted') cnf
         else fmap (\res -> (res,[res])) <$>
-             runClauseSAT (maxIndex ai) (build desired') (build unwanted') cnf
+             runClauseSAT (maxIndex aiD) (build desired') (build unwanted') cnf
     case result of 
         Left musCNF -> do
             hPutStrLn stderr $
@@ -304,24 +305,24 @@ runBritney config = do
             let mus = cnf2Clauses (cleanedRules `concatP` relaxable) musCNF 
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
-            print (nest 4 (vcat (map (pp ai) (build mus))))
+            print (nest 4 (vcat (map (pp aiD) (build mus))))
         Right (newAtomIs,smallTransitions) -> do
             mbDo (differenceH config) $ \h -> do
-                let newAtoms = S.map (ai `lookupAtom`) newAtomIs
+                let newAtoms = S.map (aiD `lookupAtom`) newAtomIs
                 let (newSource, newBinaries, _) = splitAtoms newAtoms
                 hPutStrLn h "Changes of Sources:"
-                printDifference h (setMap (ai `lookupSrc`) $ sources testing) newSource
+                printDifference h (setMap (aiD `lookupSrc`) $ sources testing) newSource
                 hPutStrLn h "Changes of Package:"
-                printDifference h (setMap (ai `lookupBin`) $ binaries testing) newBinaries
+                printDifference h (setMap (aiD `lookupBin`) $ binaries testing) newBinaries
                 hFlush h
 
             mbDo (hintsH config) $ \h -> do
                 forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints ai testing unstable builtBy thisTransitionNewAtomsIs
+                    L.hPut h $ generateHints aiD testing unstable builtBy thisTransitionNewAtomsIs
                 hFlush h
 
             mbDo (heidiH config) $ \h -> do
-                L.hPut h $ generateHeidi ai newAtomIs
+                L.hPut h $ generateHeidi aiD newAtomIs
 
     hPutStrLn stderr $ "Done"
     

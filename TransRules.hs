@@ -62,12 +62,12 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
         filterKeySrc = IxM.filterWithKey (\k _ -> k `IxS.member` sources') 
         filterKeyAtoms = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') 
 
+calculateBuiltBy :: [RawPackageInfo] -> BuiltBy
+calculateBuiltBy = IxM.unions . map builtByR
 
 resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageInfoOut{..}
-  where builtBy = IxM.unions $ map builtByR rawPackageInfos
-
-        buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
+  where buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
         binariesUnion = {-# SCC "binariesUnion" #-} IxS.unions $ map binaries sis
 
@@ -270,9 +270,9 @@ generateInstallabilityAtoms config pi ai =
 
 -- Sources and binaries that will not be in testing, in any case. Can be used
 -- to skip certain things, most notable generating the dependency information.
-findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> HintResults
+findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults
     -> Producer (SrcI, String)
-findNonCandidates config ai unstable testing general pi hr f x =
+findNonCandidates config ai unstable testing general builtBy hr f x =
     (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked) f x
   where tooyoung = 
             -- packages need to be old enough
@@ -287,7 +287,7 @@ findNonCandidates config ai unstable testing general pi hr f x =
             -- release architectures ought not to be out of date
             [ (newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
                 binI <- IxS.toList (binaries unstable),
-                let srcI = builtBy pi IxM.! binI,
+                let srcI = builtBy IxM.! binI,
                 -- TODO: only release architecture here
                 newer <- newerSources unstable IxM.! srcI,
                 newer `IxS.notMember` sources testing
@@ -316,9 +316,9 @@ findUnmodified config unstable testing nonCandidates =
 
 -- Wrapper around transitionRules' that prevents sharing. We _want_ to
 -- recalculate the rules everytime 'build' is called upon the producer.
-transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> PackageInfo -> Producer (SrcI, String)
+transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-transitionRules config ai unstable testing general pi nc = toProducer $
+transitionRules config ai unstable testing general builtBy nc = toProducer $
     keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy 
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
@@ -341,14 +341,6 @@ transitionRules config ai unstable testing general pi nc = toProducer $
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
-            ]
-        conflictClauses =
-            {-# SCC "conflictClauses" #-}
-            -- Conflicts
-            [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList (conflicts pi),
-                (disjunction, reason) <- depends,
-                confl <- disjunction
             ]
         releaseSync = 
             {-# SCC "releaseSync" #-}
@@ -383,7 +375,7 @@ transitionRules config ai unstable testing general pi nc = toProducer $
             {-# SCC "needsSource" #-}
             -- a package needs its source
             [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
-                (bin, src) <- IxM.toList (builtBy pi)
+                (bin, src) <- IxM.toList builtBy
             ]
         needsBinary =
             {-# SCC "needsBinary" #-}
