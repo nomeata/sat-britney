@@ -24,6 +24,7 @@ import Indices
 import Types
 import AtomIndex
 import LitSat
+import PrettyPrint
 import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
@@ -139,14 +140,18 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
         -}
 
         dependsBadHull = {-# SCC "dependsBadHull" #-}
-            flip IxM.mapWithKey relevantConflicts $ \p conflicts ->
+            IxM.filter (not . IxS.null) $
+            flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
                 let deps = dependsRelWithConflictsHull IxM.! p
                     revDependsRel' = restrictRel revDependsRel deps
                 in IxS.seal $ IxS.unions [ hull
-                    | (c1,c2) <- S.toList conflicts
+                    | (c1,c2) <- S.toList relConfs
+                    , c1 < c2
                     , let hull =
                             (IxM.findWithDefault IxS.empty c1 revDependsHull `IxS.intersection` deps) `IxS.union`
                             (IxM.findWithDefault IxS.empty c2 revDependsHull `IxS.intersection` deps)
+                    -- , traceShow (pp ai p, pp ai c1, pp ai c2) True
+                    -- , traceShow (map (pp ai) $ IxS.toList hull) True
                     , if p `IxS.member` hull then True else error "p not in depsHull"
                     ]
 

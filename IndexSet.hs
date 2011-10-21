@@ -27,6 +27,8 @@ class IndexPred a where
     notMember :: Index i -> a i -> Bool
     toList :: a i -> [Index i]
     size :: a i -> Int
+    null :: a i -> Bool
+
 
 instance IndexPred Set where
     Index x `member` IndexSet s = x `S.member` s
@@ -37,6 +39,8 @@ instance IndexPred Set where
     {-# INLINE toList #-}
     size (IndexSet s) = S.size s
     {-# INLINE size #-}
+    null (IndexSet s) = S.null s
+    {-# INLINE null #-}
 
 {-# RULES "IndexSet/toList" forall is . toList is = build (\c n -> foldr c n is) #-}
 
@@ -52,6 +56,8 @@ instance IndexPred Pred where
     {-# INLINE toList #-}
     size (IndexPred s) = U.length s
     {-# INLINE size #-}
+    null (IndexPred s) = U.null s
+    {-# INLINE null #-}
 
 
 binSearch :: Int32 -> U.Vector Int32 -> Bool
@@ -78,9 +84,6 @@ Index x `insert` IndexSet s = IndexSet $ x `S.insert` s
 
 singleton :: Index a -> Set a
 singleton (Index x) = IndexSet $ S.singleton x
-
-null :: Set a -> Bool
-null (IndexSet s) = S.null s
 
 isSubsetOf :: Set a -> Set a -> Bool
 IndexSet m1 `isSubsetOf` IndexSet m2 = m1 `S.isSubsetOf` m2
