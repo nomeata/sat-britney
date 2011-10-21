@@ -79,6 +79,7 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
         depends = {-# SCC "depends" #-} IxM.mapWithKey 
                     (\binI -> let Binary _ _ arch = ai `lookupBin` binI
                               in map $ first $
+                                IxS.seal . IxS.fromList .
                                 filter (`IxS.notMember` nonCandidateBins) .
                                 nub .
                                 concatMap (resolveDep arch)
@@ -90,7 +91,7 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
                     map dependsR rawPackageInfos
 
         dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
-                     IxM.map (IxS.fromList . concatMap fst) $
+                     IxM.map (IxS.unions . map (IxS.unseal . fst)) $
                      depends
 
         dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-}
@@ -154,14 +155,14 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
         conflicts = {-# SCC "conflicts" #-} IxM.unionWith (++)
                     ( IxM.mapWithKey
                         (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
-                                  in map $ first $ nub . concatMap (resolveConf pkg arch)
+                                  in map $ first $ IxS.seal . IxS.fromList . concatMap (resolveConf pkg arch)
                                                        -- . filter depRelHasUpperBound
                         )
                         (IxM.unions (map conflictsR rawPackageInfos))
                     )
                     ( IxM.mapWithKey
                         (\binI -> let Binary pkg _ arch = ai `lookupBin` binI
-                                  in map $ first $ nub . concatMap (resolveConf pkg arch)
+                                  in map $ first $ IxS.seal . IxS.fromList . concatMap (resolveConf pkg arch)
                         )
                         (IxM.unions (map breaksR rawPackageInfos))
                     )
@@ -171,7 +172,7 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
 
         flatConflicts :: IxM.Map Binary (IxS.Set Binary)
         flatConflicts = {-# SCC "flatConflicts" #-} IxM.filter (not . IxS.null) $
-                        IxM.map (IxS.fromList . concatMap fst) $
+                        IxM.map (IxS.unions . map (IxS.unseal.fst)) $
                         conflicts
 
         conflictsRel :: IxM.Map Binary (IxS.Set Binary)
@@ -390,7 +391,7 @@ transitionRules' config ai unstable testing general pi nc =
                 (binI,depends) <- IxM.toList (depends pi),
                 binI `IxM.notMember` dependsBadHull pi,
                 (disjunction, reason) <- depends,
-                let deps = map genIndex disjunction
+                let deps = map genIndex $ IxS.toList disjunction
             ]
         hardDependencies =
             {-# SCC "hardDependencies" #-}
@@ -403,14 +404,14 @@ transitionRules' config ai unstable testing general pi nc =
                 let deps = [ case indexInst ai (Inst forI depI) of
                                 Just instI -> genIndex instI
                                 Nothing    -> genIndex depI
-                           | depI <- disjunction ]
+                           | depI <- IxS.toList disjunction ]
             ] ++
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
                 (disjunction, reason) <- conflicts pi IxM.! binI,
-                confl <- disjunction,
+                confl <- IxS.toList disjunction,
                 confl `IxS.member` binIs,
                 let conflI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ confl
             ] ++
@@ -425,7 +426,7 @@ transitionRules' config ai unstable testing general pi nc =
             [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (conflicts pi),
                 (disjunction, reason) <- depends,
-                confl <- disjunction
+                confl <- IxS.toList disjunction
             ]
         releaseSync = 
             {-# SCC "releaseSync" #-}

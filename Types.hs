@@ -22,6 +22,7 @@ import DebVersionCmp
 import Indices
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
+import qualified Data.Vector.Unboxed as U
 
 type Set = S.Set
 type Map = M.Map
@@ -194,11 +195,11 @@ data RawPackageInfo = RawPackageInfo {
 data PackageInfo =
     PackageInfoOut {
         builtBy :: IxM.Map Binary SrcI,
-        depends :: IxM.Map Binary [([BinI], ByteString)],
+        depends :: IxM.Map Binary [(IxS.Pred Binary, ByteString)],
         dependsRel :: IxM.Map Binary (IxS.Set Binary),
         -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
         dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)],
+        conflicts :: IxM.Map Binary [(IxS.Pred Binary, ByteString)],
         conflictsRel :: IxM.Map Binary (IxS.Set Binary),
         hasConflict :: IxS.Set Binary,
         hasConflictInDeps :: IxS.Set Binary,
@@ -206,9 +207,9 @@ data PackageInfo =
         }
     | PackageInfoIn {
         builtBy :: IxM.Map Binary SrcI,
-        depends :: IxM.Map Binary [([BinI], ByteString)],
+        depends :: IxM.Map Binary [(IxS.Pred Binary, ByteString)],
         dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)]
+        conflicts :: IxM.Map Binary [(IxS.Pred Binary, ByteString)]
         }
     deriving (Show)
 

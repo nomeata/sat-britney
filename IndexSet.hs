@@ -70,6 +70,9 @@ binSearch b v = go v
 seal :: Set a -> Pred a
 seal (IndexSet s) = IndexPred $ U.fromList $ map fromIntegral $ S.toList s
 
+unseal :: Pred a -> Set a
+unseal (IndexPred s) = IndexSet $ S.fromDistinctAscList $ map fromIntegral $ U.toList s
+
 empty :: Set a
 empty = IndexSet S.empty
 
