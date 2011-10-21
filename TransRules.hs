@@ -63,7 +63,7 @@ thinSuite config suite rawPackageInfo general = (SuiteInfo
 
 
 resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
-resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageInfo{..}
+resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageInfoOut{..}
   where builtBy = IxM.unions $ map builtByR rawPackageInfos
 
         buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis

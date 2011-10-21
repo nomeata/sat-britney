@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
 
 -- |
 -- Copyright: (c) 2011 Joachim Breitner
@@ -177,9 +177,9 @@ runBritney config = do
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
     let hintResults = processHints config ai3 unstable testing general hints
 
-    let pi@PackageInfo{builtBy} = resolvePackageInfo config ai3 nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
+    let PackageInfoOut{..} = resolvePackageInfo config ai3 nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
-        nonCandidates = findNonCandidates config ai3 unstable testing general pi hintResults
+        nonCandidates = findNonCandidates config ai3 unstable testing general (PackageInfoIn{..}) hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
         unmod = findUnmodified config unstable testing nonCandidateSet
 
@@ -192,8 +192,8 @@ runBritney config = do
         hPutStrLn stderr $ "ERROR: " ++ show (pp ai3 atom) ++ " is a non-candidate in testin!"
 
     when (showStats config) $ do
-        let binCount = IxM.size (depends pi)
-            depCount = sum $ map length $ IxM.elems (depends pi)
+        let binCount = IxM.size depends
+            depCount = sum $ map length $ IxM.elems depends
 
         {-
         hPrintf stderr "Non-conflict encoding: %d atoms and %d clauses\n" binCount depCount
@@ -212,20 +212,20 @@ runBritney config = do
         -}
 
         hPrintf stderr "Encoding considering only relevant conflicts/dependencies: %d atoms and %d clauses\n" 
-            (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull pi))
-            (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull pi)
+            (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull))
+            (sum $ map (length . (depends IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull)
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size (hasConflict pi)) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts pi) ++ " conflicts, " ++ show (IxS.size (hasConflictInDeps pi)) ++ " have conflicts in dependencies, of which " ++ show (IxM.size (dependsBadHull pi)) ++ " have bad conflicts."
+    hPutStrLn stderr $ "A total of " ++ show (IxS.size hasConflict) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts) ++ " conflicts, " ++ show (IxS.size hasConflictInDeps) ++ " have conflicts in dependencies, of which " ++ show (IxM.size dependsBadHull) ++ " have bad conflicts."
 
     hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
-        (sum $ map IxS.size $ IxM.elems $ dependsBadHull pi)
+        (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
 
-    let ai = generateInstallabilityAtoms config pi ai3
+    let ai = generateInstallabilityAtoms config (PackageInfoIn{..}) ai3
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
     let (rules, relaxable, desired, unwanted)
-            = transitionRules config ai unstable testing general pi nonCandidates
+            = transitionRules config ai unstable testing general (PackageInfoIn{..}) nonCandidates
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  rules

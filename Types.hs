@@ -191,18 +191,25 @@ data RawPackageInfo = RawPackageInfo {
 }
     deriving (Show)
     
-data PackageInfo = PackageInfo {
-    builtBy :: IxM.Map Binary SrcI,
-    depends :: IxM.Map Binary [([BinI], ByteString)],
-    dependsRel :: IxM.Map Binary (IxS.Set Binary),
-    -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
-    dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-    conflicts :: IxM.Map Binary [([BinI], ByteString)],
-    conflictsRel :: IxM.Map Binary (IxS.Set Binary),
-    hasConflict :: IxS.Set Binary,
-    hasConflictInDeps :: IxS.Set Binary,
-    affected :: IxS.Set Binary
-}
+data PackageInfo =
+    PackageInfoOut {
+        builtBy :: IxM.Map Binary SrcI,
+        depends :: IxM.Map Binary [([BinI], ByteString)],
+        dependsRel :: IxM.Map Binary (IxS.Set Binary),
+        -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
+        dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
+        conflicts :: IxM.Map Binary [([BinI], ByteString)],
+        conflictsRel :: IxM.Map Binary (IxS.Set Binary),
+        hasConflict :: IxS.Set Binary,
+        hasConflictInDeps :: IxS.Set Binary,
+        affected :: IxS.Set Binary
+        }
+    | PackageInfoIn {
+        builtBy :: IxM.Map Binary SrcI,
+        depends :: IxM.Map Binary [([BinI], ByteString)],
+        dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
+        conflicts :: IxM.Map Binary [([BinI], ByteString)]
+        }
     deriving (Show)
 
 data GeneralInfo = GeneralInfo {
