@@ -69,16 +69,16 @@ cnf2Clauses clauses (conj,_) = toProducer $ filter check $ build clauses
   where check c = any (`S.member` conjS) $ map (modify Intro.sort) $ build (clause2CNF c)
         conjS = S.fromList $ V.toList conj
 
-runClauseSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF -> IO (Either CNF (S.Set AtomI))
+runClauseSAT :: AtomI -> Producer AtomI -> Producer AtomI -> CNF -> IO (Either CNF (S.Set AtomI))
 runClauseSAT mi desired unwanted cnf = do
-    result <- runPicosatPMAX (map unIndex desired ++ map (negate . unIndex) unwanted) cnf
+    result <- runPicosatPMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
     case result of
         Left core -> return  $ Left core
         Right vars -> return $ Right $ varsToSet vars
 
-runClauseMINMAXSAT :: AtomI -> [AtomI] -> [AtomI] -> CNF -> IO (Either CNF (S.Set AtomI, [S.Set AtomI]))
+runClauseMINMAXSAT :: AtomI -> Producer AtomI -> Producer AtomI -> CNF -> IO (Either CNF (S.Set AtomI, [S.Set AtomI]))
 runClauseMINMAXSAT mi desired unwanted cnf = do
-    result <- runPicosatPMINMAX (map unIndex desired ++ map (negate . unIndex) unwanted) cnf
+    result <- runPicosatPMINMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
     case result of
         Left core -> return  $ Left core
         Right (vars,varss) -> return $ Right $ (varsToSet vars, map varsToSet varss)

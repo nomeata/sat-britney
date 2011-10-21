@@ -191,7 +191,7 @@ desiredAtoms unstable testing f x = (toProducer $
 
 unwantedAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
 unwantedAtoms unstable testing f x = (toProducer $ 
-    fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable) f x
+    fmap genIndex $ IxS.toList $ binaries testing `IxS.difference` binaries unstable) f x
 
 combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
 combine m1 m2 x = (x `M.lookup` m1) >>= (`M.lookup` m2)

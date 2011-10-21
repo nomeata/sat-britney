@@ -196,7 +196,7 @@ runBritney config = do
         cnfTrans = {-# SCC "cnfTrans" #-} clauses2CNF (maxIndex ai) transRules
 
     hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."
-    result <- runClauseSAT (maxIndex ai) (build desired) (build unwanted) cnfTrans
+    result <- runClauseSAT (maxIndex ai) desired unwanted cnfTrans
     maxTransition <- case result of 
         Left musCNF -> do
             hPutStrLn stderr "Not even in happy world, things can migrate:"
@@ -318,9 +318,9 @@ runBritney config = do
 
     hPutStrLn stderr $ "Running main picosat run"
     result <- if transSize config == ManySmall
-        then runClauseMINMAXSAT (maxIndex aiD) (build desired') (build unwanted') cnf
+        then runClauseMINMAXSAT (maxIndex aiD) desired' unwanted' cnf
         else fmap (\res -> (res,[res])) <$>
-             runClauseSAT (maxIndex aiD) (build desired') (build unwanted') cnf
+             runClauseSAT (maxIndex aiD) desired' unwanted' cnf
     case result of 
         Left musCNF -> do
             hPutStrLn stderr $
@@ -338,8 +338,8 @@ runBritney config = do
 
             let unmodMissing = unmod `IxS.difference` IxS.generalize newAtomIis
             unless (IxS.null unmodMissing) $ do
-                hPutStrLn stderr $ "Something was wrong with my assumptions, these binaries were expected not to be modified:"
-                hPutStrLn stderr $ show $ punctuate (text ", ") $ map (pp ai) $ IxS.toList unmodMissing
+                hPutStrLn stderr $ "Something was wrong with my assumptions, these binaries were expected not to be modified, but are now missing in testing:"
+                hPutStrLn stderr $ show $ nest 4 $ fsep $ punctuate comma $ map (pp ai) $ IxS.toList unmodMissing
 
             mbDo (differenceH config) $ \h -> do
                 let newAtoms = S.map (aiD `lookupAtom`) newAtomIs
