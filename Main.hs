@@ -29,6 +29,7 @@ import qualified IndexMap as IxM
 
 import ParseSuite
 import TransRules
+import DepRules
 import Types
 import PrettyPrint
 import ClauseSat
