@@ -202,10 +202,8 @@ runBritney config = do
             exitFailure
         Right (newAtomIs) -> return $ IxS.fromDistinctAscList $ S.toAscList newAtomIs
 
-    hPutStrLn stderr $ "Difference between testing and ideal testing: " ++
-        show (IxS.size (maxTransition `IxS.difference` atoms testing)) ++ " atoms added, " ++ 
-        show (IxS.size (atoms testing `IxS.difference` maxTransition)) ++ " atoms removed, " ++
-        show (IxS.size (atoms testing `IxS.intersection` maxTransition)) ++ " atoms remain."
+    hPutStrLn stderr $ "Difference between testing and ideal testing:"
+    differenceStats testing unstable maxTransition
 
     mbDo (find (`IxS.member` sources testing) (IxS.toList nonCandidateSet)) $ \atom ->
         hPutStrLn stderr $ "ERROR: " ++ show (pp ai atom) ++ " is a non-candidate in testin!"
@@ -330,6 +328,11 @@ runBritney config = do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map (pp aiD) (build mus))))
         Right (newAtomIs,smallTransitions) -> do
+
+            let newAtomIis = IxS.fromDistinctAscList (S.toList newAtomIs)
+            hPutStrLn stderr $ "Difference between testing and new testing:"
+            differenceStats testing unstable newAtomIis
+
             mbDo (differenceH config) $ \h -> do
                 let newAtoms = S.map (aiD `lookupAtom`) newAtomIs
                 let (newSource, newBinaries, _) = splitAtoms newAtoms
@@ -356,6 +359,21 @@ splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
         select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
 
 setMap f = S.fromList . map f . IxS.toList
+
+differenceStats :: SuiteInfo -> SuiteInfo -> IxS.Set Atom -> IO ()
+differenceStats testing unstable newAtoms = do
+    let newAtomsSrc = IxS.generalize newAtoms `IxS.intersection` (sources testing `IxS.union` sources unstable)
+    let newAtomsBin = IxS.generalize newAtoms `IxS.intersection` (binaries testing `IxS.union` binaries unstable)
+
+    hPutStrLn stderr $ "  " ++
+        show (IxS.size (newAtomsSrc `IxS.difference` sources testing)) ++ " sources added, " ++ 
+        show (IxS.size (sources testing `IxS.difference` newAtomsSrc)) ++ " sources removed, " ++
+        show (IxS.size (sources testing `IxS.intersection` newAtomsSrc)) ++ " sources remain."
+
+    hPutStrLn stderr $ "  " ++
+        show (IxS.size (newAtomsBin `IxS.difference` binaries testing)) ++ " binaries added, " ++ 
+        show (IxS.size (binaries testing `IxS.difference` newAtomsBin)) ++ " binaries removed, " ++
+        show (IxS.size (binaries testing `IxS.intersection` newAtomsBin)) ++ " binaries remain."
 
 printDifference :: (Show a, Ord a) => Handle -> S.Set a -> S.Set a -> IO ()
 printDifference h old new = do
