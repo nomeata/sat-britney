@@ -24,6 +24,7 @@ import Data.Char
 import Data.Function
 import Control.DeepSeq
 import Control.Arrow (first)
+import Control.Seq
 
 import ControlParser
 import Types
@@ -98,36 +99,36 @@ parseSuite config ai dir = do
                 sourceAtom = Source (SourceName source) sourceVersion
                 (ai'', srcI) = addSrc ai' sourceAtom
 
-    let builtBy = {-# SCC "builtBy" #-} IxM.fromList builtByList
+    let builtBy = {-# SCC "builtBy" #-} IxM.fromList $ s builtByList
 
-    let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
+    let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) $ s [ (src,[bin]) | (bin,src) <- builtByList ]
 
-    let depends = {-# SCC "depends" #-} IxM.fromList binaryDepends
+    let depends = {-# SCC "depends" #-} IxM.fromList $ s binaryDepends
 
-    let provides = {-# SCC "provides" #-} M.fromListWith (++) binaryProvides
+    let provides = {-# SCC "provides" #-} M.fromListWith (++) $ s binaryProvides
 
-    let conflicts = {-# SCC "conflicts" #-} IxM.fromList binaryConflicts
+    let conflicts = {-# SCC "conflicts" #-} IxM.fromList $ s binaryConflicts
 
-    let breaks = {-# SCC "breaks" #-} IxM.fromList binaryBreaks
+    let breaks = {-# SCC "breaks" #-} IxM.fromList $ s binaryBreaks
 
-    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) binaryNamesList
+    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) $ s binaryNamesList
 
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
-    let sourceAtoms = {-# SCC "sourceAtoms" #-} IxS.fromList (IxM.keys builds)
+    let sourceAtoms = {-# SCC "sourceAtoms" #-} IxS.fromList $ s (IxM.keys builds)
 
-    let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++)
+    let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++) $ s
             [ (pkg, [srcI]) | srcI <- IxS.toList sourceAtoms,
                               let Source pkg _  = ai' `lookupSrc` srcI ]
 
-    let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) [ (source, newer) |
+    let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) $ s [ (source, newer) |
             srcIs <- M.elems sourceNames, 
             let sources = [ (v, srcI) | srcI <- srcIs , let Source _ v  = ai' `lookupSrc` srcI ],
             let sorted = map snd $ sortBy (cmpDebianVersion `on` fst) sources,
             source:newer <- tails sorted
             ]
 
-    let binaries = {-# SCC "binaries" #-} IxS.fromList binaryAtoms
+    let binaries = {-# SCC "binaries" #-} IxS.fromList $ s binaryAtoms
 
     let atoms = {-# SCC "atoms" #-} IxS.generalize sourceAtoms `IxS.union` IxS.generalize binaries
 
@@ -135,7 +136,7 @@ parseSuite config ai dir = do
     hPutStrLn stderr "Reading and parsing bugs file"
     bugS <- BS.readFile (dir </> "BugsV")
 
-    let (rawBugs, ai'') = {-# SCC "rawBugs" #-} first M.fromList $ addBugList ai' (BS.lines bugS)
+    let (rawBugs, ai'') = {-# SCC "rawBugs" #-} first (M.fromList . s) $ addBugList ai' (BS.lines bugS)
         addBugList finalAi [] = ([], finalAi)
         addBugList ai (l:ls) = if BS.null l 
                                then addBugList ai ls
@@ -200,7 +201,7 @@ parseUrgencyFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Urgency)
 parseUrgencyFile file ai = do
     urgencyS <- BS.readFile file
 
-    return $ M.fromList [ (srcI, urgency) | 
+    return $ M.fromList $ s [ (srcI, urgency) | 
             line <- BS.lines urgencyS,
             not (BS.null line),
             let [pkg,version,urgencyS] = BS.words line,
@@ -221,7 +222,7 @@ parseAgeFile config ai = do
         False -> utctDay <$> getCurrentTime
     let now' = offset config `addDays`now
     let epochDay = fromGregorian 1970 1 1
-    return $ M.fromList [ (srcI, Age age) | 
+    return $ M.fromList $ s [ (srcI, Age age) | 
             line <- BS.lines dateS,
             not (BS.null line),
             let [pkg,version,dayS] = BS.words line,
@@ -296,3 +297,6 @@ set2MapNonEmpty f s = IxM.fromDistinctAscList [ (k, v) | k <- IxS.toAscList s, l
 
 set2Map :: (Index a -> b) -> IxS.Set a -> IxM.Map a b
 set2Map f s = IxM.fromDistinctAscList [ (k, f k) | k <- IxS.toAscList s ]
+
+s :: NFData a => [a] -> [a]
+s = withStrategy $ seqList rdeepseq

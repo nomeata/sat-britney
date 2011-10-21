@@ -189,7 +189,6 @@ runBritney config = do
 
     hPutStrLn stderr $ "In unstable are " ++ show (IxS.size (sources unstable `IxS.difference` sources testing)) ++ " new sources, out of which " ++ show (IxS.size nonCandidateSet) ++ " are not candidates."
 
-
     let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
         unwanted = unwantedAtoms unstable testing
