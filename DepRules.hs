@@ -34,7 +34,7 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
 
         binariesUnion = {-# SCC "binariesUnion" #-} IxS.unions $ map binaries sis
 
-        affected = IxS.unions . map (transitiveHull1 revDependsRel) $ IxS.toList $ binariesUnion `IxS.difference` unmod
+        affected = {-# SCC "affected" #-} IxS.unions . map (transitiveHull1 revDependsRel) $ IxS.toList $ binariesUnion `IxS.difference` unmod
 
         nonCandidateBins = {-# SCC "nonCandidateBins" #-} IxS.seal $ IxS.fromList $
             concatMap (buildsUnion IxM.!) $
