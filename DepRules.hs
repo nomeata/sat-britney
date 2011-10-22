@@ -14,7 +14,6 @@ import qualified Data.Map as M
 import Data.Functor
 import Data.Function
 import Control.Arrow ((&&&), first)
-import Control.Monad.State
 import Debug.Trace
 import Safe
 import GHC.Exts (build)
@@ -207,12 +206,11 @@ transitiveHull1 :: IxM.Map a (IxS.Set a) -> Index a -> IxS.Set a
 transitiveHull1 rel x = addTransitiveHull1 rel x IxS.empty
 
 addTransitiveHull1 :: IxM.Map t (IxS.Set t) -> Index t -> IxS.Set t -> IxS.Set t
-addTransitiveHull1 rel x = execState (deps x)
-  where deps d = do
-            ex <- gets (d `IxS.member`)
-            unless ex $ do
-                modify (IxS.insert d)
-                mapM_ deps $ IxS.toList (IxM.findWithDefault IxS.empty d rel)
+addTransitiveHull1 rel x hull = go hull [x]
+  where go hull [] = hull
+        go hull (x:xs) | x `IxS.member` hull = go hull xs
+                       | otherwise = go (IxS.insert x hull) 
+                                        (maybe [] IxS.toList (IxM.lookup x rel) ++ xs)
 
 transitiveHull1s :: IxM.Map t (IxS.Set t) -> [Index t] -> IxS.Set t
 transitiveHull1s rel = foldr (addTransitiveHull1 rel) IxS.empty 
