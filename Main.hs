@@ -212,6 +212,10 @@ runBritney config = do
 
     hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified, but " ++ show (IxS.size affected) ++ " are possibly affected."
 
+    hPutStrLn stderr $ "The conflicts affecting most packages are:"
+    mapM_ (hPutStrLn stderr) 
+        [ "   " ++ show (pp ai c1) ++ " -#- " ++ show (pp ai c2) ++ " (" ++ show i ++ " packages)"
+        | ((c1,c2),i) <- take 10 conflictHistogram ]
 
     when (showStats config) $ do
         let binCount = IxM.size depends

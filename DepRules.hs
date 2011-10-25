@@ -8,6 +8,7 @@ module DepRules where
 
 import Data.List
 import Data.Maybe
+import Data.Ord
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import qualified Data.Map as M
@@ -70,6 +71,19 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
             transitiveHull revDependsRel
 
         -- dependsHull = transitiveHull dependsRel
+        
+        conflictHistogram = {-# SCC "conflictHistogram" #-}
+            reverse $
+            sortBy (comparing snd) $
+            M.toList $ 
+            M.unionsWith (+) $
+            map (\(_,cs) ->
+                M.fromListWith (+) $
+                map (\c -> (c,1)) $
+                filter (\(c1,c2) -> c1 < c2) $
+                S.toList cs
+            ) $
+            IxM.toList relevantConflicts
 
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
             IxM.filter (not . S.null) $
