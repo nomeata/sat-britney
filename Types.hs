@@ -204,7 +204,8 @@ data PackageInfo =
         hasConflict :: IxS.Set Binary,
         hasConflictInDeps :: IxS.Set Binary,
         affected :: IxS.Set Binary,
-        conflictHistogram :: [((BinI,BinI),Int)]
+        conflictHistogram :: [((BinI,BinI),Int)],
+        relevantDepHistogram :: [(BinI,Int)]
         }
     | PackageInfoIn {
         depends :: IxM.Map Binary [([BinI], ByteString)],

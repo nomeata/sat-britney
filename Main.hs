@@ -217,6 +217,11 @@ runBritney config = do
         [ "   " ++ show (pp ai c1) ++ " -#- " ++ show (pp ai c2) ++ " (" ++ show i ++ " packages)"
         | ((c1,c2),i) <- take 10 conflictHistogram ]
 
+    hPutStrLn stderr $ "The packages appearing in most sets of relevant dependencies are:"
+    mapM_ (hPutStrLn stderr) 
+        [ "   " ++ show (pp ai p) ++ " (" ++ show i ++ " packages)"
+        | (p,i) <- take 10 relevantDepHistogram ]
+
     when (showStats config) $ do
         let binCount = IxM.size depends
             depCount = sum $ map length $ IxM.elems depends

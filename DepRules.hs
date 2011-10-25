@@ -85,6 +85,18 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
             ) $
             IxM.toList relevantConflicts
 
+        relevantDepHistogram = {-# SCC "relevantDepHistogram" #-}
+            reverse $
+            sortBy (comparing snd) $
+            M.toList $ 
+            M.unionsWith (+) $
+            map (\(_,deps) ->
+                M.fromListWith (+) $
+                map (\c -> (c,1)) $
+                IxS.toList deps
+            ) $
+            IxM.toList dependsBadHull
+
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
             IxM.filter (not . S.null) $
             flip IxM.mapWithKey dependsRelWithConflictsHull $ \p deps ->
