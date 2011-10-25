@@ -98,7 +98,11 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
             IxM.toList dependsBadHull
 
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
-            IxM.filter (not . S.null) $
+            -- Here we through out the packages that are not affected by the
+            -- transition. Only affected packages can have relevant conflicts;
+            -- but even packages that are not affected can contribute a
+            -- relevant conflict.
+            IxM.filterWithKey (\p cs -> p `IxS.member` affected && not (S.null cs)) $
             flip IxM.mapWithKey dependsRelWithConflictsHull $ \p deps ->
                 S.fromList
                     [ (c1,c2)
@@ -178,14 +182,11 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
 
         hasConflictInDepsProp = {-# SCC "hasConflictInDepsProp" #-} IxS.seal hasConflictInDeps
         hasConflictInDeps = {-# SCC "hasConflictInDeps" #-}
-            -- Here we through out the packages that are not affected by the
-            -- transition.
-            IxS.intersection affected $
             go hasConflict IxS.empty
           where go new cid | IxS.null new = {-# SCC "where" #-} cid
                            | otherwise = 
-                    let new' = {-# SCC "let" #-} IxS.unions $ mapMaybe (`IxM.lookup` revDependsRel) $ IxS.toList new
-                        cid' = {-# SCC "cid" #-} cid `IxS.union` new
+                    let new' = IxS.unions $ mapMaybe (`IxM.lookup` revDependsRel) $ IxS.toList new
+                        cid' =  cid `IxS.union` new
                     in  go (new' `IxS.difference` cid') cid'
 
         binaryNamesUnion = {-# SCC "binaryNamesUnion" #-} M.unionsWith (++) (map binaryNamesR rawPackageInfos)
