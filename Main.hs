@@ -185,7 +185,10 @@ runBritney config = do
 
     let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
-        unwanted = unwantedAtoms unstable testing
+        -- In many-small-mode, we do not try to remove packages, as
+        -- that would yield far too many individual removals
+        unwanted | transSize config == ManySmall = toProducer [] 
+                 | otherwise        = unwantedAtoms unstable testing
         cnfTrans = {-# SCC "cnfTrans" #-} clauses2CNF (maxIndex ai) transRules
 
     hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."
