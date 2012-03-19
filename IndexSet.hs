@@ -9,14 +9,14 @@ import Unsafe.Coerce
 import qualified Data.Vector.Unboxed as U
 import Data.Int
 
-import qualified Data.DenseIntSet as S
+import qualified Data.IntSet as S
 import Indices
 
 import Prelude hiding ( foldr )
 
 import GHC.Exts ( build )
 
-instance NFData S.IntSet
+-- instance NFData S.IntSet
 
 newtype Set a = IndexSet { unIndexSet :: S.IntSet }
   deriving (NFData, Show)

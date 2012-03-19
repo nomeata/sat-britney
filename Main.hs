@@ -87,7 +87,7 @@ opts =
       "directory containing britney data"
     , Option "h" ["hints-dir"]
       (ReqArg (\d config -> return (config { hintDir = Just d })) "DIR")
-      "directory containing britney data"
+      "directory containing britney hints"
     , Option "a" ["arches"]
       (ReqArg (\as config -> return (config { arches = toArchList as })) "ARCH,..")
       "comma-separated list of arches to consider at all.\nDefaults to all"

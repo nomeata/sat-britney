@@ -17,7 +17,7 @@ Executable SAT-Britney
 
   ld-options: -static -pthread
 
-  Build-Depends: base ==4.*
+  Build-Depends: base ==4.5.*
         , containers
         , mtl
         , array

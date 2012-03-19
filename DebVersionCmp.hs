@@ -7,7 +7,8 @@
 module DebVersionCmp where
 
 import System.IO.Unsafe
-import Foreign
+import Foreign.Ptr
+import Foreign.Marshal
 import Foreign.C.Types
 import Foreign.C.String
 
