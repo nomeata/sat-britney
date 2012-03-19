@@ -67,13 +67,6 @@ viewed at http://git.nomeata.de/?p=sat-britney.git
 Deficiencies, Bugs and TODOs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
- * Conflicts between dependencies are not handled to their full extend. In
-   particular, Conflicts with an upper version bound and Breaks are enforced on
-   the package level, i.e. conflicting package are not even allowed to enter
-   testing, even if nothing depends on both, while unversioned Conflicts are
-   ignored.
-   It is not yet clear whether a proper encoding is still solvable in
-   acceptable time, or whether this issue will stick around.
  * The dependencies of arch:all packages are only checked on i386, just as with
    britney itself. But then SAT-Britney assumes it is installable on all other
    architectures as well, which is not exactly what we want.
@@ -81,5 +74,3 @@ Deficiencies, Bugs and TODOs
    each arch.
  * It might be interesting to run edost-distchek before and after our runs, to
    find identify wrongly migrated packages.
- * SAT-Britney does not read the existing hint files for britney and thus
-   suggests to migrate packages that are blocked.
