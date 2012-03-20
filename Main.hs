@@ -25,6 +25,7 @@ import Text.Printf
 
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
+import qualified ArchMap as AM
 
 import ParseSuite
 import TransRules
@@ -207,54 +208,57 @@ runBritney config = do
     -- From here on, we look at dependencies
 
     let unmod = IxS.generalize maxTransition `IxS.intersection` binaries testing
-    let PackageInfoOut{..} = resolvePackageInfo config ai nonCandidateSet unmod [testing, unstable] [testingRPI, unstableRPI]
-    let aiD = generateInstallabilityAtoms config (PackageInfoIn{..}) ai
+    let piOutM = AM.build (arches config) $ \arch ->
+            resolvePackageInfo config ai nonCandidateSet unmod arch [testing, unstable] [testingRPI, unstableRPI]
+    let piM = AM.map (\(PackageInfoOut {..}) -> PackageInfoIn {..}) piOutM
+    let aiD = foldr (generateInstallabilityAtoms config) ai (AM.elems piM)
 
-    hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified, but " ++ show (IxS.size affected) ++ " are possibly affected."
+    forM_ (AM.toList piOutM) $ \(arch, PackageInfoOut {..}) -> do
+        hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified, but " ++ show (IxS.size affected) ++ " are possibly affected."
 
-    hPutStrLn stderr $ "The conflicts affecting most packages are:"
-    mapM_ (hPutStrLn stderr) 
-        [ "   " ++ show (pp ai c1) ++ " -#- " ++ show (pp ai c2) ++ " (" ++ show i ++ " packages)"
-        | ((c1,c2),i) <- take 10 conflictHistogram ]
+        hPutStrLn stderr $ "The conflicts affecting most packages are:"
+        mapM_ (hPutStrLn stderr) 
+            [ "   " ++ show (pp ai c1) ++ " -#- " ++ show (pp ai c2) ++ " (" ++ show i ++ " packages)"
+            | ((c1,c2),i) <- take 10 conflictHistogram ]
 
-    hPutStrLn stderr $ "The packages appearing in most sets of relevant dependencies are:"
-    mapM_ (hPutStrLn stderr) 
-        [ "   " ++ show (pp ai p) ++ " (" ++ show i ++ " packages)"
-        | (p,i) <- take 10 relevantDepHistogram ]
+        hPutStrLn stderr $ "The packages appearing in most sets of relevant dependencies are:"
+        mapM_ (hPutStrLn stderr) 
+            [ "   " ++ show (pp ai p) ++ " (" ++ show i ++ " packages)"
+            | (p,i) <- take 10 relevantDepHistogram ]
 
-    when (showStats config) $ do
-        let binCount = IxM.size depends
-            depCount = sum $ map length $ IxM.elems depends
+        when (showStats config) $ do
+            let binCount = IxM.size depends
+                depCount = sum $ map length $ IxM.elems depends
 
-        {-
-        hPrintf stderr "Non-conflict encoding: %d atoms and %d clauses\n" binCount depCount
+            {-
+            hPrintf stderr "Non-conflict encoding: %d atoms and %d clauses\n" binCount depCount
 
-        hPrintf stderr "Naive encoding (calculated): %d atoms and %d clauses\n" 
-            (binCount^2)
-            (binCount * depCount)
+            hPrintf stderr "Naive encoding (calculated): %d atoms and %d clauses\n" 
+                (binCount^2)
+                (binCount * depCount)
 
-        hPrintf stderr "Encoding considering cones: %d atoms and %d clauses\n" 
-            (binCount + (sum $ map IxS.size $ IxM.elems $ transitiveHull (dependsRel pi)))
-            (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ transitiveHull (dependsRel pi))
+            hPrintf stderr "Encoding considering cones: %d atoms and %d clauses\n" 
+                (binCount + (sum $ map IxS.size $ IxM.elems $ transitiveHull (dependsRel pi)))
+                (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ IxM.elems $ transitiveHull (dependsRel pi))
 
-        hPrintf stderr "Encoding considering easy packages: %d atoms and %d clauses\n" 
-            (binCount + (sum $ map IxS.size $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi)))
-            (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi))
-        -}
+            hPrintf stderr "Encoding considering easy packages: %d atoms and %d clauses\n" 
+                (binCount + (sum $ map IxS.size $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi)))
+                (sum $ map (length . (depends pi IxM.!)) $ concatMap IxS.toList $ map (IxS.filter (not . (`IxS.member` hasConflictInDeps pi))) $ IxM.elems $ transitiveHull (dependsRel pi))
+            -}
 
-        hPrintf stderr "Encoding considering only relevant conflicts/dependencies: %d atoms and %d clauses\n" 
-            (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull))
-            (sum $ map (length . (depends IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull)
+            hPrintf stderr "Encoding considering only relevant conflicts/dependencies: %d atoms and %d clauses\n" 
+                (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull))
+                (sum $ map (length . (depends IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull)
 
-    hPutStrLn stderr $ "A total of " ++ show (IxS.size hasConflict) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts) ++ " conflicts, " ++ show (IxS.size hasConflictInDeps) ++ " have conflicts in dependencies, of which " ++ show (IxM.size dependsBadHull) ++ " have bad conflicts."
+        hPutStrLn stderr $ "A total of " ++ show (IxS.size hasConflict) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts) ++ " conflicts, " ++ show (IxS.size hasConflictInDeps) ++ " have conflicts in dependencies, of which " ++ show (IxM.size dependsBadHull) ++ " have bad conflicts."
 
-    hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
-        (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
+        hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
+            (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex aiD)) ++ " atoms."
 
-    let depHard = hardDependencyRules config aiD (PackageInfoIn{..})
-        depSoft = softDependencyRules config aiD (PackageInfoIn{..})
+    let depHard = unionP $ map (hardDependencyRules config aiD) $ AM.elems piM
+        depSoft = unionP $ map (softDependencyRules config aiD) $ AM.elems piM
         relaxable = depSoft
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`

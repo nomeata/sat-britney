@@ -9,7 +9,7 @@ import Control.DeepSeq
 import qualified Data.IntMap as M
 import Arches
 
-import GHC.Exts ( build )
+import qualified GHC.Exts ( build )
 
 -- instance NFData a => NFData (M.IntMap a) where rnf m = rnf (M.toList m)
 
@@ -62,7 +62,7 @@ elems (ArchMap m1) = M.elems m1
 toList :: Map d -> [(Arch, d)]
 toList (ArchMap m1) = first Arch <$> M.toList m1
 
-{-# RULES "ArchMap/toList" forall m . toList m = build (\c n -> foldWithKey (\k x xs -> c (k,x) xs) n m) #-}
+{-# RULES "ArchMap/toList" forall m . toList m = GHC.Exts.build (\c n -> foldWithKey (\k x xs -> c (k,x) xs) n m) #-}
 
 fromListWith :: (b -> b -> b) -> [(Arch, b)] -> Map b
 fromListWith f l = ArchMap $ M.fromListWith f (first unArch <$> l)
@@ -100,3 +100,5 @@ foldWithKey f x (ArchMap m) = M.foldWithKey (\i v x' -> f (Arch i) v x') x m
 fold :: (a -> b -> b) -> b -> Map a -> b
 fold f x (ArchMap m) = M.fold f x m
 
+build :: [Arch] -> (Arch -> b) -> Map b
+build as f = fromList [ (a, f a) | a <- as ]
