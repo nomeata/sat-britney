@@ -34,9 +34,12 @@ resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary ->
 resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = PackageInfoOut{..}
   where buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
+        -- All binaries from this arch and arch all
         binariesUnion = {-# SCC "binariesUnion" #-}
-            IxS.filter (\binI -> let Binary _ _ arch = ai `lookupBin` binI in ST.maybe True (== piArch) arch ) $
-           IxS.unions $
+            IxS.filter (\binI ->
+                let Binary _ _ arch = ai `lookupBin` binI
+                in  ST.maybe True (== piArch) arch ) $
+            IxS.unions $
             map binaries sis
 
         affected = {-# SCC "affected" #-} IxS.unions . map (transitiveHull1 revDependsRel) $ IxS.toList $ binariesUnion `IxS.difference` unmod
@@ -44,11 +47,25 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
         nonCandidateBins = {-# SCC "nonCandidateBins" #-} IxS.seal $ IxS.fromList $
             concatMap (buildsUnion IxM.!) $
             IxS.toList nonCandidates
+
+        -- A package is relevant here if it is from this architecture, or it is
+        -- a dependency, or it is arch all and this arch is archForAll.
+        isArchForAll = piArch == archForAll config
+        relevantBins = 
+            IxS.unions .
+            map (transitiveHull1 dependsRel) .
+            IxS.toList .
+            IxS.filter (\binI ->
+                let Binary _ _ arch = ai `lookupBin` binI
+                in  binI `IxS.notMember` nonCandidateBins &&
+                    ST.maybe isArchForAll (const True) arch) $
+            binariesUnion
         
         depends = {-# SCC "depends" #-} IxM.fromList $  
                     map (\(binI,deps) -> 
                         (binI, map (first
-                            (filter (`IxS.notMember` nonCandidateBins) .
+                            (
+                            filter (`IxS.notMember` nonCandidateBins) .
                             nub .
                             concatMap resolveDep) )
                             deps)
@@ -74,7 +91,7 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
         revDependsHull = {-# SCC "revDependsHull" #-}
             transitiveHull revDependsRel
 
-        -- dependsHull = transitiveHull dependsRel
+        dependsHull = transitiveHull dependsRel
         
         conflictHistogram = {-# SCC "conflictHistogram" #-}
             reverse $
@@ -138,10 +155,14 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
         -}
 
         dependsBadHull = {-# SCC "dependsBadHull" #-}
-            IxM.map IxS.seal $
-            IxM.unionWith IxS.union (IxM.mapWithKey (\p _ -> IxS.singleton p) depends) $
-            IxM.filter (not . IxS.null) $
-            flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
+            IxM.fromAscList $
+            map (\p ->
+               (p, IxS.seal $ fromMaybe (IxS.singleton p) $ IxM.lookup p dependsBadHull')
+            ) $
+            IxS.toList relevantBins
+          where
+            dependsBadHull' = IxM.filter (not . IxS.null) $
+                flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
                 let deps = dependsRelWithConflictsHull IxM.! p
                     revDependsRel' = restrictRel revDependsRel deps
                 in IxS.unions [ hull
@@ -264,7 +285,7 @@ restrictRel rel set = {-# SCC "restrictRel" #-} IxM.fromAscList $
 initialInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> [Inst]
 initialInstallabilityAtoms config pi ai = [
     Inst binI binI (piArch pi) |
-    binI <- IxM.keys (depends pi)
+    binI <- IxS.toList (relevantBins pi)
     ]
 
 installabilityAtoms :: Config -> PackageInfo -> AtomIndex -> [Inst]
@@ -284,7 +305,8 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
             {-# SCC "hardDependencies" #-}
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                forI <- IxS.toList (relevantBins pi),
+                let binIs = (dependsBadHull pi) IxM.! forI,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI (piArch pi),
                 (disjunction, reason) <- depends pi IxM.! binI,
@@ -294,7 +316,8 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
                            | depI <- disjunction ]
             ] ++
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
-                (forI,binIs) <- IxM.toList (dependsBadHull pi),
+                forI <- IxS.toList (relevantBins pi),
+                let binIs = (dependsBadHull pi) IxM.! forI,
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "X" . indexInst ai $ Inst forI binI (piArch pi),
                 (disjunction, reason) <- conflicts pi IxM.! binI,

@@ -195,6 +195,7 @@ type BuiltBy = IxM.Map Binary SrcI
 data PackageInfo =
     PackageInfoOut {
         piArch :: Arch,
+        relevantBins :: IxS.Set Binary, -- relevant for this arch
         depends :: IxM.Map Binary [([BinI], ByteString)],
         dependsRel :: IxM.Map Binary (IxS.Set Binary),
         -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
@@ -209,6 +210,7 @@ data PackageInfo =
         }
     | PackageInfoIn {
         piArch :: Arch,
+        relevantBins :: IxS.Set Binary, -- relevant for this arch
         depends :: IxM.Map Binary [([BinI], ByteString)],
         dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
         conflicts :: IxM.Map Binary [([BinI], ByteString)],
