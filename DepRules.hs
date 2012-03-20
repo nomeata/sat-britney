@@ -99,7 +99,7 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
             IxM.toList dependsBadHull
 
         relevantConflicts = {-# SCC "relevantConflicts" #-} 
-            -- Here we through out the packages that are not affected by the
+            -- Here we throw out the packages that are not affected by the
             -- transition. Only affected packages can have relevant conflicts;
             -- but even packages that are not affected can contribute a
             -- relevant conflict.
@@ -135,11 +135,13 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
         -}
 
         dependsBadHull = {-# SCC "dependsBadHull" #-}
+            IxM.map IxS.seal $
+            IxM.unionWith IxS.union (IxM.mapWithKey (\p _ -> IxS.singleton p) depends) $
             IxM.filter (not . IxS.null) $
             flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
                 let deps = dependsRelWithConflictsHull IxM.! p
                     revDependsRel' = restrictRel revDependsRel deps
-                in IxS.seal $ IxS.unions [ hull
+                in IxS.unions [ hull
                     | (c1,c2) <- S.toList relConfs
                     , c1 < c2
                     , let hull =
@@ -258,14 +260,27 @@ restrictRel rel set = {-# SCC "restrictRel" #-} IxM.fromAscList $
     flip mapMaybe (IxS.toAscList set) $ \k ->
         (k,) . IxS.filter (`IxS.member` set) <$> IxM.lookup k rel
 
+initialInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> [Inst]
+initialInstallabilityAtoms config pi ai =
+    map (instForItself config ai) $ IxM.keys (depends pi)
+
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
-    foldl' (\ai (p,s) -> 
-        let Binary _ _ a' = ai `lookupBin` p
-            a = ST.fromMaybe (archForAll config) a'
-        in foldl' (\ ai d -> fst (ai `addInst` Inst p d a)) ai (IxS.toList s)
+    foldl' (\ai (Inst p _ a) -> 
+        let deps = maybe [p] IxS.toList $ IxM.lookup p (dependsBadHull pi)
+        in foldl' (\ ai d -> fst (ai `addInst` Inst p d a)) ai deps
     ) ai $
-    IxM.toList (dependsBadHull pi)
+    initialInstallabilityAtoms config pi ai
+
+instForItself :: Config -> AtomIndex -> BinI -> Inst
+instForItself config ai binI = 
+    let Binary _ _ a' = ai `lookupBin` binI
+        a = ST.fromMaybe (archForAll config) a'
+    in  Inst binI binI a
+
+instIForItself :: Config -> AtomIndex -> BinI -> InstI
+instIForItself config ai binI = fromJustNote "instIForItself" $
+    indexInst ai (instForItself config ai binI)
 
 hardDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
 hardDependencyRules config ai pi = (toProducer $ hardDependencies)
@@ -301,24 +316,23 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
                 let Binary _ _ a' = ai `lookupBin` binI
                     a = ST.fromMaybe (archForAll config) a',
                 let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a
-            ]
-            
-softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
-softDependencyRules config ai pi = toProducer $ softDependencies
-  where softDependencies =
-            {-# SCC "softDependencies" #-}
-            [Implies (genIndex forI) [instI] "the package ought to be installable." |
-                forI <- IxM.keys (dependsBadHull pi),
-                let Binary _ _ a' = ai `lookupBin` forI
-                    a = ST.fromMaybe (archForAll config) a',
-                let instI = genIndex . fromJustNote "X" . indexInst ai $ Inst forI forI a
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
                 binI `IxS.member` affected pi,
                 binI `IxM.notMember` dependsBadHull pi,
+                let instI = instIForItself config ai,
                 (disjunction, reason) <- depends,
-                let deps = map genIndex disjunction
+                let deps = map (genIndex . instIForItself config ai) disjunction
+            ]
+
+softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
+softDependencyRules config ai pi = toProducer $ softDependencies
+  where softDependencies =
+            {-# SCC "softDependencies" #-}
+            [Implies (genIndex forI) [genIndex instI] "the package ought to be installable." |
+                forI <- IxM.keys (depends pi),
+                let instI = instIForItself config ai forI
             ]
 
 
