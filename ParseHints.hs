@@ -48,7 +48,8 @@ hintFiles = [
     ("faw"         , hints_helpers),
     ("nthykier"    , hints_helpers),
     ("freeze"      , ["block","block-all","block-udeb"]),
-    ("freeze-exception" , ["unblock","unblock-udeb"])
+    ("freeze-exception" , ["unblock","unblock-udeb"]),
+    ("test-hints",   hints_all) -- for the test suite
     ]
 
 -- Copied from code/b2/britney.py
