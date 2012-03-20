@@ -261,16 +261,23 @@ restrictRel rel set = {-# SCC "restrictRel" #-} IxM.fromAscList $
         (k,) . IxS.filter (`IxS.member` set) <$> IxM.lookup k rel
 
 initialInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> [Inst]
-initialInstallabilityAtoms config pi ai =
-    map (instForItself config ai) $ IxM.keys (depends pi)
+initialInstallabilityAtoms config pi ai = [
+    Inst binI binI a |
+    binI <- IxM.keys (depends pi),
+    let Binary _ _ a' = ai `lookupBin` binI,
+    a <- ST.maybe (arches config) (:[]) a'
+    ]
+
+installabilityAtoms :: Config -> PackageInfo -> AtomIndex -> [Inst]
+installabilityAtoms config pi ai =
+    [ Inst p d a |
+    Inst p _ a <- initialInstallabilityAtoms config pi ai,
+    d <- maybe [p] IxS.toList $ IxM.lookup p (dependsBadHull pi)
+    ]
 
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
-    foldl' (\ai (Inst p _ a) -> 
-        let deps = maybe [p] IxS.toList $ IxM.lookup p (dependsBadHull pi)
-        in foldl' (\ ai d -> fst (ai `addInst` Inst p d a)) ai deps
-    ) ai $
-    initialInstallabilityAtoms config pi ai
+    foldl' (\ai i ->  fst (ai `addInst` i)) ai $ installabilityAtoms config pi ai
 
 instForItself :: Config -> AtomIndex -> BinI -> Inst
 instForItself config ai binI = 
@@ -290,20 +297,20 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 binI <- IxS.toList binIs,
-                let Binary _ _ a' = ai `lookupBin` binI
-                    a = ST.fromMaybe (archForAll config) a',
+                let Binary _ _ a' = ai `lookupBin` forI,
+                a <- ST.maybe (arches config) (:[]) a',
                 let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a,
                 (disjunction, reason) <- depends pi IxM.! binI,
                 let deps = [ case indexInst ai (Inst forI depI a) of
                                 Just instI -> genIndex instI
-                                Nothing    -> genIndex depI
+                                Nothing    -> genIndex . fromJustNote "X" . indexInst ai $ Inst depI depI a
                            | depI <- disjunction ]
             ] ++
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 binI <- IxS.toList binIs,
-                let Binary _ _ a' = ai `lookupBin` binI
-                    a = ST.fromMaybe (archForAll config) a',
+                let Binary _ _ a' = ai `lookupBin` forI,
+                a <- ST.maybe (arches config) (:[]) a',
                 let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a,
                 (disjunction, reason) <- conflicts pi IxM.! binI,
                 confl <- disjunction,
@@ -311,11 +318,8 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
                 let conflI = genIndex . fromJustNote "Z" . indexInst ai $ Inst forI confl a
             ] ++
             [ Implies instI [genIndex binI] "the package needs to be present" |
-                (forI,binIs) <- IxM.toList (dependsBadHull pi),
-                binI <- IxS.toList binIs,
-                let Binary _ _ a' = ai `lookupBin` binI
-                    a = ST.fromMaybe (archForAll config) a',
-                let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a
+                inst@(Inst binI _ _) <- installabilityAtoms config pi ai,
+                let instI = genIndex . fromJustNote "Y" . indexInst ai $ inst
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),
