@@ -74,3 +74,26 @@ Deficiencies, Bugs and TODOs
    each arch.
  * It might be interesting to run edost-distchek before and after our runs, to
    find identify wrongly migrated packages.
+
+
+Failing test suite tests
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the test suite at
+http://anonscm.debian.org/gitweb/?p=collab-maint/britney-tests.git;a=summary
+there are some tests that fail for known reasons in SAT-Britney. Here is an
+explanation of these (at 3566a214f9b99819d1bdce22d88be4f140429307):
+
+ * Some hints are not yet supported:
+   basic-block-arch-hint
+   basic-force-hint
+   basic-tpu-approve-hint
+   basic-unblock-hint
+   basic-unblock-multiple-types
+ * SAT-Britney will happily remove some binaries of an old source where the new
+   source renames all binaries:
+   basic-renamed-packages
+ * SAT-Britney will keep _all_ referenced Sources in the sources file, even
+   those from smooth transitions:
+   basic-smooth-update
+   
