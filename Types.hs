@@ -20,6 +20,7 @@ import Data.List
 import Data.Function
 import DebVersionCmp
 import Indices
+import Arches
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
@@ -52,11 +53,6 @@ hasUpperBound _ = False
 
 cmpDebianVersion :: DebianVersion -> DebianVersion -> Ordering
 cmpDebianVersion = versionCompare `on` unDebianVersion
-
-newtype Arch = Arch { unArch :: ByteString }
-    deriving (Ord, Eq, NFData)
-
-instance Show Arch where show = BS.unpack . unArch
 
 newtype SourceName = SourceName { unSourceName :: ByteString }
     deriving (Ord, Eq, NFData)

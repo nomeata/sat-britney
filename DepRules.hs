@@ -22,6 +22,7 @@ import GHC.Exts (build)
 import ParseHints
 import Indices
 import Types
+import Arches
 import AtomIndex
 import LitSat
 import PrettyPrint

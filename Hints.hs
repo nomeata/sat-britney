@@ -11,6 +11,7 @@ import qualified Data.Strict as ST
 import qualified Data.ByteString.Lazy.Char8 as L
 
 import Types
+import Arches
 import Indices
 import AtomIndex
 import qualified IndexMap as IxM
@@ -25,8 +26,8 @@ generateHints ai testing unstable builtBy newAtoms =
             | srcI <- IxS.toList addedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ] ++ 
-            [ L.fromChunks [srcName , "/", arch, "/", srcVersion ]
-            | (srcI,Arch arch) <- S.toList binNMUedSources
+            [ L.fromChunks [srcName , "/", archToByteString arch, "/", srcVersion ]
+            | (srcI,arch) <- S.toList binNMUedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ]
         (newSourcesIs, newBinariesIs, _) = splitAtomIs ai newAtoms

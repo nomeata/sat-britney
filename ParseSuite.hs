@@ -28,6 +28,7 @@ import Control.Seq
 
 import ControlParser
 import Types
+import Arches
 import AtomIndex
 import Indices
 import qualified IndexMap as IxM
@@ -76,7 +77,8 @@ parseSuite config ai dir = do
                 archS = architectureField
                 (arch,onArches) = if archS == "all"
                                   then (ST.Nothing, arches config)
-                                  else (ST.Just (Arch archS), [Arch archS])
+                                  else let arch = archFromByteString archS
+                                       in (ST.Just arch, [arch])
                 binNamesEntries = [ ((BinName pkg,a),[binI]) | a <- onArches ]
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
@@ -273,7 +275,7 @@ parseArchReq :: BS.ByteString -> ArchitectureReq
 parseArchReq str | BS.null str = error "Empty Architecture requirement"
 parseArchReq str = arches `deepseq` t arches
  where t = if BS.head str == '!' then ArchExcept else ArchOnly
-       arches = fmap Arch $
+       arches = fmap archFromByteString $
                 filter (not . BS.null) $
                 BS.splitWith (\c -> isSpace c || c `elem` ",!") $
                 str

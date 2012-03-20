@@ -3,6 +3,7 @@
 module ParseHints where
 
 import Types
+import Arches
 import AtomIndex
 import qualified IndexSet as IxS
 

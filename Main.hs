@@ -31,6 +31,7 @@ import ParseSuite
 import TransRules
 import DepRules
 import Types
+import Arches
 import PrettyPrint
 import ClauseSat
 import Picosat
@@ -50,12 +51,9 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." Nothing allArches allArches i386 minAgeTable (Age 10) False 0 AsLargeAsPossible
+defaultConfig = Config "." Nothing (V.toList allArches) (V.toList allArches) i386 minAgeTable (Age 10) False 0 AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-  where i386 = Arch "i386"
-
-allArches = map (Arch . BS.pack) $ words
-    "i386 sparc powerpc armel ia64 mips mipsel s390 amd64 kfreebsd-i386 kfreebsd-amd64"
+  where i386 = read "i386"
 
 openH "-" = return (Just stdout)
 openH filename = do
@@ -74,12 +72,12 @@ parseAtom s = case BS.split '_' (BS.pack s) of
                        | arch == "all" ->
         return $ BinAtom $ Binary (BinName pkg) (DebianVersion version) ST.Nothing
                        | otherwise ->
-        return $ BinAtom $ Binary (BinName pkg) (DebianVersion version) (ST.Just (Arch arch))
+        return $ BinAtom $ Binary (BinName pkg) (DebianVersion version) (ST.Just (archFromByteString arch))
     _ -> do hPutStrLn stderr $ "Error: Could not parse package name \"" ++ s ++ "\", "++
                                "expecting format name_version_arch, where arch can be src."
             exitFailure
 
-toArchList = map Arch . filter (not . BS.null) . BS.splitWith (\c -> c `elem` ", ") . BS.pack
+toArchList = map archFromByteString . filter (not . BS.null) . BS.splitWith (\c -> c `elem` ", ") . BS.pack
 
 opts =
     [ Option "d" ["dir"]

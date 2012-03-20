@@ -10,6 +10,7 @@ import qualified Data.Set as S
 import qualified Data.Strict as ST
 import qualified Data.ByteString.Lazy.Char8 as L
 
+import Arches
 import Types
 import Indices
 import AtomIndex
@@ -21,6 +22,6 @@ generateHeidi ai = L.concat . map heidiLine . S.toList
                 -> L.fromChunks [n, " ", v, " source\n"]
             BinAtom (Binary (BinName n) (DebianVersion v) ST.Nothing)
                 -> L.fromChunks [n, " ", v, " all\n"]
-            BinAtom (Binary (BinName n) (DebianVersion v) (ST.Just (Arch a)))
-                -> L.fromChunks [n, " ", v, " ", a,"\n"]
+            BinAtom (Binary (BinName n) (DebianVersion v) (ST.Just arch))
+                -> L.fromChunks [n, " ", v, " ", archToByteString arch,"\n"]
             _   -> L.empty
