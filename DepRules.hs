@@ -266,7 +266,7 @@ generateInstallabilityAtoms config pi ai =
     IxM.toList (dependsBadHull pi)
 
 hardDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
-hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x 
+hardDependencyRules config ai pi = (toProducer $ hardDependencies)
   where hardDependencies =
             {-# SCC "hardDependencies" #-}
             -- Dependencies
@@ -294,7 +294,7 @@ hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
             ]
-
+            
 softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
 softDependencyRules config ai pi = toProducer $ softDependencies
   where softDependencies =

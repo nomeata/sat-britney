@@ -21,7 +21,6 @@ import System.Exit
 import Data.Functor
 import Data.Maybe
 import Data.List
-import GHC.Exts ( augment, build ) 
 import Text.Printf
 
 import qualified IndexSet as IxS
@@ -176,7 +175,7 @@ runBritney config = do
     let builtBy = calculateBuiltBy [testingRPI, unstableRPI]
         nonCandidates :: Producer (SrcI, String)
         nonCandidates = findNonCandidates config ai unstable testing general builtBy hintResults
-        nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
+        nonCandidateSet = IxS.fromList $ map fst $ fromProducer nonCandidates
 
 
     hPutStrLn stderr $ "In unstable are " ++ show (IxS.size (sources unstable `IxS.difference` sources testing)) ++ " new sources, out of which " ++ show (IxS.size nonCandidateSet) ++ " are not candidates."
@@ -195,7 +194,7 @@ runBritney config = do
         Left musCNF -> do
             hPutStrLn stderr "Not even in happy world, things can migrate:"
             let mus = cnf2Clauses transRules musCNF 
-            print (nest 4 (vcat (map (pp ai) (build mus))))
+            print (nest 4 (vcat (map (pp ai) (fromProducer mus))))
             exitFailure
         Right (newAtomIs) -> return $ IxS.fromDistinctAscList $ S.toAscList newAtomIs
 
@@ -263,16 +262,16 @@ runBritney config = do
         cnfT = clauses2CNF (maxIndex aiD) rulesT `combineCNF` cnfTrans
         relaxableClauses = clauses2CNF (maxIndex aiD) relaxable
 
-    hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
-        show (length (build relaxable)) ++ " soft clauses, with " ++ show (length (build desired)) ++ " desired and " ++ show (length (build unwanted)) ++ " unwanted atoms."
+    hPutStrLn stderr $ "Constructed " ++ show (length (fromProducer rulesT)) ++ " hard and " ++
+        show (length (fromProducer relaxable)) ++ " soft clauses, with " ++ show (length (fromProducer desired)) ++ " desired and " ++ show (length (fromProducer unwanted)) ++ " unwanted atoms."
 
     mbDo (clausesUnrelaxH config) $ \h -> do
         hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp aiD) (build transRules)
+        mapM_ (hPrint h . nest 4 . pp aiD) (fromProducer transRules)
         hPutStrLn h ""
-        mapM_ (hPrint h . nest 4 . pp aiD) (build rulesT)
+        mapM_ (hPrint h . nest 4 . pp aiD) (fromProducer rulesT)
         hPutStrLn h ""
-        mapM_ (hPrint h . nest 4 . pp aiD) (build relaxable)
+        mapM_ (hPrint h . nest 4 . pp aiD) (fromProducer relaxable)
         hFlush h
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
@@ -281,13 +280,13 @@ runBritney config = do
         Left musCNF -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
             let mus = cnf2Clauses relaxable musCNF 
-            hPrint stderr $ nest 4 (vcat (map (pp aiD) (build mus)))
+            hPrint stderr $ nest 4 (vcat (map (pp aiD) (fromProducer mus)))
             exitFailure
         Right (leftConj,removeConjs) -> do
             hPutStrLn stderr $ show (V.length (fst removeConjs)) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
                 let removeClause = cnf2Clauses relaxable removeConjs 
-                hPrint h $ nest 4 (vcat (map (pp aiD) (build removeClause)))
+                hPrint h $ nest 4 (vcat (map (pp aiD) (fromProducer removeClause)))
                 hFlush h
             return leftConj
 
@@ -303,9 +302,9 @@ runBritney config = do
 
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp aiD) (build transRules)
-        mapM_ (hPrint h . nest 4 . pp aiD) (build cleanedRules)
-        mapM_ (hPrint h . nest 4 . pp aiD) (build (cnf2Clauses relaxable leftConj))
+        mapM_ (hPrint h . nest 4 . pp aiD) (fromProducer transRules)
+        mapM_ (hPrint h . nest 4 . pp aiD) (fromProducer cleanedRules)
+        mapM_ (hPrint h . nest 4 . pp aiD) (fromProducer (cnf2Clauses relaxable leftConj))
         hFlush h
 
     {-
@@ -332,7 +331,7 @@ runBritney config = do
             let mus = cnf2Clauses (transRules `concatP` cleanedRules `concatP` relaxable) musCNF 
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
-            print (nest 4 (vcat (map (pp aiD) (build mus))))
+            print (nest 4 (vcat (map (pp aiD) (fromProducer mus))))
         Right (newAtomIs,smallTransitions) -> do
 
             let newAtomIis = IxS.fromDistinctAscList (S.toList newAtomIs)

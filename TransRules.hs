@@ -37,8 +37,8 @@ calculateBuiltBy = IxM.unions . map builtByR
 -- to skip certain things, most notable generating the dependency information.
 findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults
     -> Producer (SrcI, String)
-findNonCandidates config ai unstable testing general builtBy hr f x =
-    (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked) f x
+findNonCandidates config ai unstable testing general builtBy hr =
+    (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked)
   where tooyoung = 
             -- packages need to be old enough
             [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
@@ -81,8 +81,8 @@ findUnmodified config unstable testing nonCandidates =
 
 transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-transitionRules config ai unstable testing general builtBy nc f x = (toProducer $
-    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ) f x
+transitionRules config ai unstable testing general builtBy nc = (toProducer $
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy)
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -149,7 +149,7 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
             ]
         nonCandidates =
             [ Not (genIndex atom) reason
-            | (atom, reason) <- build nc
+            | (atom, reason) <- fromProducer nc
             ]
         buggy = 
             {-# SCC "buggy1" #-}
@@ -186,12 +186,12 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
 
 
 desiredAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
-desiredAtoms unstable testing f x = (toProducer $
-    fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing) f x
+desiredAtoms unstable testing = (toProducer $
+    fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing)
 
 unwantedAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
-unwantedAtoms unstable testing f x = (toProducer $ 
-    fmap genIndex $ IxS.toList $ binaries testing `IxS.difference` binaries unstable) f x
+unwantedAtoms unstable testing = (toProducer $ 
+    fmap genIndex $ IxS.toList $ binaries testing `IxS.difference` binaries unstable) 
 
 combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
 combine m1 m2 x = (x `M.lookup` m1) >>= (`M.lookup` m2)

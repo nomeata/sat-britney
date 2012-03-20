@@ -24,6 +24,8 @@ import Arches
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
+import GHC.Exts
+
 type Set = S.Set
 type Map = M.Map
 
@@ -248,18 +250,28 @@ data Config = Config
     }
 
 -- List fusion helper
-type Producer a = forall b. (a -> b -> b) -> b -> b
+newtype Producer a = Producer { applyProducer :: (forall b. (a -> b -> b) -> b -> b) }
 
-toProducer l f x = foldr f x l
+toProducer l = Producer $ \f x -> foldr f x l
 {-# INLINE toProducer #-}
 
+fromProducer (Producer p) = build p
+{-# INLINE fromProducer #-}
+
+augmentProducer (Producer p) = augment p
+{-# INLINE augmentProducer #-}
+
 mapP :: (a -> b) -> Producer a -> Producer b
-mapP f p c n = p (\x ys -> c (f x) ys) n
+mapP f (Producer p) = Producer $ \c n -> p (\x ys -> c (f x) ys) n
 {-# INLINE mapP #-}
 
 concatP :: Producer a -> Producer a -> Producer a
-concatP p1 p2 c n = p1 c (p2 c n)
+concatP (Producer p1) (Producer p2) = Producer $ \c n -> p1 c (p2 c n)
 {-# INLINE concatP #-}
+
+unionP :: [Producer a] -> Producer a
+unionP [] = Producer $ \c n -> n
+unionP (Producer p:ps) = Producer $ \c n -> p c (applyProducer (unionP ps) c n)
 
 mbDo Nothing _ = return ()
 mbDo (Just x) f = f x
