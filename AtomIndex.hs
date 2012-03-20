@@ -8,9 +8,10 @@ import Data.Functor
 import Data.Strict.Tuple
 
 import Types
+import Arches
 import Indices
 
-type AtomIndex = (M.Map Atom Int :!: IM.IntMap (IM.IntMap Int) :!: IM.IntMap Atom :!: Counter)
+type AtomIndex = (M.Map Atom Int :!: IM.IntMap (IM.IntMap (IM.IntMap Int)) :!: IM.IntMap Atom :!: Counter)
 
 maxIndex :: AtomIndex -> AtomI
 maxIndex (_ :!: _ :!: _ :!: i) = Index (pred i)
@@ -25,9 +26,10 @@ indexSrc (m :!: _ :!: _ :!: _) s = Index <$> SrcAtom s `M.lookup` m
 indexBug :: AtomIndex -> Bug -> Maybe BugI
 indexBug (m :!: _ :!: _ :!: _) b = Index <$> BugAtom b `M.lookup` m
 indexInst :: AtomIndex -> Inst -> Maybe InstI
-indexInst (m :!: im :!: _ :!: _) (Inst (Index b1) (Index b2)) = do
-    im' <- b1 `IM.lookup` im
-    i <- b2 `IM.lookup` im'
+indexInst (m :!: im :!: _ :!: _) (Inst (Index b1) (Index b2) (Arch arch)) = do
+    im' <- arch `IM.lookup` im
+    im'' <- b1 `IM.lookup` im'
+    i <- b2 `IM.lookup` im''
     return $ Index i
 indexAtom :: AtomIndex -> Atom -> Maybe AtomI
 indexAtom ai@(m :!: _ :!: _ :!: _) (InstAtom i) = genIndex <$> indexInst ai i
@@ -67,8 +69,9 @@ addInst a2i@(m :!: im :!: m' :!: c) i' = case indexInst a2i i' of
                                  succ c
                                 ), Index c)
 
-addInst2IM (Inst (Index b1) (Index b2)) c = 
-    IM.insertWith IM.union b1 (IM.singleton b2 c)
+addInst2IM (Inst (Index b1) (Index b2) (Arch a)) c = 
+    IM.insertWith (IM.unionWith IM.union) a $
+    IM.singleton b1 $ IM.singleton b2 c
 
 lookupBin :: AtomIndex -> BinI -> Binary
 lookupBin (_ :!: _ :!: m :!: _) (Index i) = (\(BinAtom b) -> b) (m IM.! i)

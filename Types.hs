@@ -83,6 +83,7 @@ instance NFData Binary
 data Inst = Inst
     { instFor :: !BinI
     , instBin :: !BinI 
+    , instOn :: !Arch
     }
     deriving (Ord, Eq)
 
@@ -104,7 +105,7 @@ instance Show Binary where
     show (Binary bn v (ST.Just a)) = show bn ++ "_" ++ show v ++ "_" ++ show a
 
 instance Show Inst where
-    show (Inst for bin) = show bin ++ "@" ++ show for
+    show (Inst for bin arch) = show bin ++ "@" ++ show for ++ "@" ++ show arch
 
 instance Show Atom where
     show (SrcAtom src) = show src

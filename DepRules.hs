@@ -261,7 +261,9 @@ restrictRel rel set = {-# SCC "restrictRel" #-} IxM.fromAscList $
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
     foldl' (\ai (p,s) -> 
-        foldl' (\ ai d -> fst (ai `addInst` Inst p d)) ai (IxS.toList s)
+        let Binary _ _ a' = ai `lookupBin` p
+            a = ST.fromMaybe (archForAll config) a'
+        in foldl' (\ ai d -> fst (ai `addInst` Inst p d a)) ai (IxS.toList s)
     ) ai $
     IxM.toList (dependsBadHull pi)
 
@@ -273,9 +275,11 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
+                let Binary _ _ a' = ai `lookupBin` binI
+                    a = ST.fromMaybe (archForAll config) a',
+                let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a,
                 (disjunction, reason) <- depends pi IxM.! binI,
-                let deps = [ case indexInst ai (Inst forI depI) of
+                let deps = [ case indexInst ai (Inst forI depI a) of
                                 Just instI -> genIndex instI
                                 Nothing    -> genIndex depI
                            | depI <- disjunction ]
@@ -283,16 +287,20 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI,
+                let Binary _ _ a' = ai `lookupBin` binI
+                    a = ST.fromMaybe (archForAll config) a',
+                let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a,
                 (disjunction, reason) <- conflicts pi IxM.! binI,
                 confl <- disjunction,
                 confl `IxS.member` binIs,
-                let conflI = genIndex . fromJustNote "Z" . indexInst ai . Inst forI $ confl
+                let conflI = genIndex . fromJustNote "Z" . indexInst ai $ Inst forI confl a
             ] ++
             [ Implies instI [genIndex binI] "the package needs to be present" |
                 (forI,binIs) <- IxM.toList (dependsBadHull pi),
                 binI <- IxS.toList binIs,
-                let instI = genIndex . fromJustNote "Y" . indexInst ai . Inst forI $ binI
+                let Binary _ _ a' = ai `lookupBin` binI
+                    a = ST.fromMaybe (archForAll config) a',
+                let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI a
             ]
             
 softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
@@ -301,7 +309,9 @@ softDependencyRules config ai pi = toProducer $ softDependencies
             {-# SCC "softDependencies" #-}
             [Implies (genIndex forI) [instI] "the package ought to be installable." |
                 forI <- IxM.keys (dependsBadHull pi),
-                let instI = genIndex . fromJustNote "X" . indexInst ai . Inst forI $ forI
+                let Binary _ _ a' = ai `lookupBin` forI
+                    a = ST.fromMaybe (archForAll config) a',
+                let instI = genIndex . fromJustNote "X" . indexInst ai $ Inst forI forI a
             ] ++
             [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 (binI,depends) <- IxM.toList (depends pi),

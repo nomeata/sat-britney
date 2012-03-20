@@ -9,6 +9,7 @@ import Text.PrettyPrint
 import Data.IntMap ((!))
 
 import Types
+import Arches
 import Indices
 import LitSat
 import AtomIndex
@@ -40,8 +41,11 @@ instance PP a => PP (Clause a) where
         text "not" <+> pp ai atom
         <+> text "because" <+> text reason
 
+instance PP Arch where
+    pp _ a = text (show a)
+
 instance PP Atom where
-    pp ai (InstAtom (Inst f p)) = pp ai p <> char '@' <> pp ai f
+    pp ai (InstAtom (Inst f p a)) = pp ai p <> char '@' <> pp ai f <> char '@' <> pp ai a
     pp _ a = text (show a)
 
 instance PP (Index a) where pp ai i = pp ai $ ai `lookupAny` i 
