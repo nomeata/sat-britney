@@ -29,6 +29,11 @@ import PrettyPrint
 import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
+import qualified ArchMap as AM
+
+
+buildArchMap :: Config -> (Arch -> a) -> AM.Map a
+buildArchMap config f = AM.fromList [ (a, f a) | a <- arches config ]
 
 resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
 resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageInfoOut{..}
@@ -42,23 +47,24 @@ resolvePackageInfo config ai nonCandidates unmod sis rawPackageInfos = PackageIn
             concatMap (buildsUnion IxM.!) $
             IxS.toList nonCandidates
         
-        depends = {-# SCC "depends" #-} IxM.fromList $  
-                    map (\(binI,deps) -> 
-                        let Binary _ _ arch = ai `lookupBin` binI
-                        in (binI, map (first
+        depends = {-# SCC "depends" #-} buildArchMap$ \arch ->
+            IxM.fromList [(binI, map (first
                             (filter (`IxS.notMember` nonCandidateBins) .
                             nub .
                             concatMap (resolveDep arch)) )
-                            deps)
-                    ) $
-                    filter (\(k,v) -> 
-                            k `IxS.notMember` nonCandidateBins
-                        ) $
-                    concatMap dependsR rawPackageInfos
+                            deps) |
+                (binI, deps) <- concatMap dependsR rawPackageInfos,
+                -- Consider only candidates
+                binI `IxS.notMember` nonCandidateBins,
+                -- Consider arch:all packages or packages from this architecture
+                let Binary _ _ archMB = ai `lookupBin` binI,
+                ST.maybe True (== arch) archMB
+                ]
 
-        dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
-                     IxM.map (IxS.fromList . concatMap fst) $
-                     depends
+
+        dependsRel = {-# SCC "dependsRel" #-} AM.map
+                    (IxM.filter (not . IxS.null) .  IxM.map (IxS.fromList . concatMap fst))
+                    depends
 
         dependsRelWithConflicts = {-# SCC "dependsRelWithConflicts" #-}
             IxM.map (IxS.filter (`IxS.member` hasConflictInDepsProp)) dependsRel

@@ -21,6 +21,7 @@ import Data.Function
 import DebVersionCmp
 import Indices
 import Arches
+import qualified ArchMap as AM
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
@@ -194,12 +195,12 @@ type BuiltBy = IxM.Map Binary SrcI
 
 data PackageInfo =
     PackageInfoOut {
-        depends :: IxM.Map Binary [([BinI], ByteString)],
-        dependsRel :: IxM.Map Binary (IxS.Set Binary),
+        depends :: AM.Map (IxM.Map Binary [([BinI], ByteString)]),
+        dependsRel :: AM.Map (IxM.Map Binary (IxS.Set Binary)),
         -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
-        dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)],
-        conflictsRel :: IxM.Map Binary (IxS.Set Binary),
+        dependsBadHull :: AM.Map (IxM.Map Binary (IxS.Pred Binary)),
+        conflicts :: AM.Map (IxM.Map Binary [([BinI], ByteString)]),
+        conflictsRel :: AM.Map (IxM.Map Binary (IxS.Set Binary)),
         hasConflict :: IxS.Set Binary,
         hasConflictInDeps :: IxS.Set Binary,
         affected :: IxS.Set Binary,
@@ -207,9 +208,9 @@ data PackageInfo =
         relevantDepHistogram :: [(BinI,Int)]
         }
     | PackageInfoIn {
-        depends :: IxM.Map Binary [([BinI], ByteString)],
-        dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)],
+        depends :: AM.Map (IxM.Map Binary [([BinI], ByteString)]),
+        dependsBadHull :: AM.Map (IxM.Map Binary (IxS.Pred Binary)),
+        conflicts :: AM.Map (IxM.Map Binary [([BinI], ByteString)]),
         affected :: IxS.Set Binary
         }
     deriving (Show)
