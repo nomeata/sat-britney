@@ -331,7 +331,7 @@ hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x
                 let conflI = genIndex . fromJustNote "Z" . indexInst ai $ Inst forI confl (piArch pi)
             ] ++
             [ Implies instI [genIndex binI] "the package needs to be present" |
-                inst@(Inst binI _ _) <- installabilityAtoms config pi ai,
+                inst@(Inst _ binI _) <- installabilityAtoms config pi ai,
                 let instI = genIndex . fromJustNote "V" . indexInst ai $ inst
             ]
 
