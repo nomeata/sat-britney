@@ -11,6 +11,7 @@ import System.Directory
 import System.Time
 import Data.Functor
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Text.Parsec
 import Text.Parsec.ByteString
 import Data.List
@@ -60,8 +61,9 @@ parseSuite config ai dir = do
          ,binaryConflicts
          ,binaryBreaks
          ,builtByList
+         ,archBuiltByList
          ,ai') = readPara ai binaries
-        readPara ai [] = ([], [], [], [], [], [], [], ai)
+        readPara ai [] = ([], [], [], [], [], [], [], [], ai)
         readPara ai (Para {..}:ps) =
                     ( binI:bins
                     , binNamesEntries ++ binNames
@@ -70,8 +72,9 @@ parseSuite config ai dir = do
                     , (binI,conflicts):confls
                     , (binI,breaks):brks
                     , (binI,srcI): bb
-                    ,finalAi)
-          where (bins, binNames, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
+                    , ST.maybe id (\a -> (:) (a,srcI)) arch $ abb
+                    , finalAi)
+          where (bins, binNames, deps, provs, confls, brks, bb, abb, finalAi) = readPara ai'' ps
                 pkg = packageField
                 version = DebianVersion versionField
                 archS = architectureField
@@ -104,6 +107,8 @@ parseSuite config ai dir = do
     let builtBy = {-# SCC "builtBy" #-} IxM.fromList $ s builtByList
 
     let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) $ s [ (src,[bin]) | (bin,src) <- builtByList ]
+
+    let buildsArches = {-# SCC "builds" #-}  IxM.fromListWith (S.union) $ s [ (src,S.singleton a) | (a,src) <- archBuiltByList ]
 
     let depends = {-# SCC "depends" #-} binaryDepends
 
@@ -167,6 +172,7 @@ parseSuite config ai dir = do
             sourceNames
             binaryNames
             builds
+            buildsArches
             newerSources
             bugs
         , RawPackageInfo

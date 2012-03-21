@@ -48,6 +48,7 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
                              urgencies general `combine` minAges config $ src,
                 age <= minAge
             ] 
+        {-        
         outdated = 
             -- release architectures ought not to be out of date
             [ (newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
@@ -56,6 +57,17 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
                 -- TODO: only release architecture here
                 newer <- newerSources unstable IxM.! srcI,
                 newer `IxS.notMember` sources testing
+            ]
+        -}
+        outdated = 
+            -- release architectures ought not to be out of date
+            [ (srcIu, "is out of date: " ++ show a ++ " not up-to-date in unstable") |
+                (srcIt, archSt) <- IxM.toList (buildsArches testing),
+                let (Source pkg vt) = ai `lookupSrc` srcIt,
+                srcIu <- fromMaybe [] $ M.lookup pkg (sourceNames unstable),
+                srcIu `IxS.notMember` sources testing,
+                let archSu = fromMaybe S.empty $ IxM.lookup srcIu (buildsArches unstable),
+                a <- S.toList $ archSt S.\\ archSu
             ]
         obsolete = 
             -- never add a source package to testing that is already superceded

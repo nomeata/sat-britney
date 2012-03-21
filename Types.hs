@@ -169,6 +169,7 @@ data SuiteInfo = SuiteInfo {
     sourceNames :: Map SourceName [SrcI],
     binaryNames :: Map (BinName, Arch) [BinI],
     builds :: IxM.Map Source [BinI],
+    buildsArches :: IxM.Map Source (S.Set Arch),
     newerSources :: IxM.Map Source [SrcI],
     bugs :: IxM.Map Atom [BugI]
     }
