@@ -38,7 +38,7 @@ calculateBuiltBy = IxM.unions . map builtByR
 findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults
     -> Producer (SrcI, String)
 findNonCandidates config ai unstable testing general builtBy hr f x =
-    (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked) f x
+    (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked ++ isMoreBuggy) f x
   where tooyoung = 
             -- packages need to be old enough
             [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
@@ -67,6 +67,22 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
             [ (src, "is blocked by the release team") |
                 src <- IxS.toList (blockedSources hr)
             ]
+        isMoreBuggy = 
+            [ (srcI, "has new bug " ++ show (ai `lookupBug` bugI)) |
+                (aI,bugIs) <- IxM.toList $ bugs unstable,
+                BinAtom (Binary pkg _ arch) <- return $ ai `lookupAtom` aI,
+                let inTesting = [ bugI' |
+                        Just (binI's) <- return $ M.lookup (pkg, ST.fromMaybe (archForAll config) arch) $ binaryNames testing,
+                        binI' <- binI's,
+                        bugI'st <- return $ fromMaybe [] $ IxM.lookup (genIndex binI') $ bugs testing,
+                        bugI'su <- return $ fromMaybe [] $ IxM.lookup (genIndex binI') $ bugs unstable,
+                        bugI' <- bugI'st ++ bugI'su
+                        ],
+                bugI <- bugIs,
+                bugI `notElem` inTesting,
+                let srcI = builtBy IxM.! aI
+            ]
+            
 
         buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
 

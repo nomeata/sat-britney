@@ -242,6 +242,7 @@ data Config = Config
     , differenceH :: Maybe Handle
     , hintsH :: Maybe Handle
     , heidiH :: Maybe Handle
+    , nonCandidatesH :: Maybe Handle
 
     , migrateThis :: Maybe Atom
     , migrateThisI :: Maybe AtomI

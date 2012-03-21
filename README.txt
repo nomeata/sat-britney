@@ -96,7 +96,4 @@ explanation of these (at 3566a214f9b99819d1bdce22d88be4f140429307):
  * SAT-Britney will keep _all_ referenced Sources in the sources file, even
    those from smooth transitions:
    basic-smooth-update
- * SAT-Britney will happily migrate a package with a new bug, as long as
-   another package in testing already has that bug:
-   bug-on-multiple-packages
    

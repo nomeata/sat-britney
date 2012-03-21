@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards, ImpredicativeTypes #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards, ImpredicativeTypes, DoAndIfThenElse #-}
 
 -- |
 -- Copyright: (c) 2011 Joachim Breitner
@@ -53,7 +53,7 @@ minAgeTable = M.fromList [
 
 defaultConfig :: Config
 defaultConfig = Config "." Nothing (V.toList allArches) (V.toList allArches) i386 minAgeTable (Age 10) False 0 AsLargeAsPossible
-                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+                       Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = read "i386"
 
 openH "-" = return (Just stdout)
@@ -117,6 +117,9 @@ opts =
     , Option "" ["heidi"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { heidiH = h })) "FILE")
       "print result in heidi format to this file"
+    , Option "" ["non-candidates"]
+      (ReqArg (\d config -> openH d >>= \h -> return (config { nonCandidatesH = h })) "FILE")
+      "print non-candidates with explanation to this file"
     , Option "" ["stats"]
       (NoArg (\config -> return (config { showStats = True })))
       "print stats for various modelings of the problem"
@@ -181,6 +184,11 @@ runBritney config = do
 
 
     hPutStrLn stderr $ "In unstable are " ++ show (IxS.size (sources unstable `IxS.difference` sources testing)) ++ " new sources, out of which " ++ show (IxS.size nonCandidateSet) ++ " are not candidates."
+
+    mbDo (nonCandidatesH config) $ \h -> do
+        hPutStrLn stderr $ "The non-candidates are:"
+        forM_ (build nonCandidates) $ \(src, reason) ->
+            hPutStrLn stderr $ show (pp ai src) ++ " " ++ reason
 
     let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
@@ -335,7 +343,7 @@ runBritney config = do
     hPutStrLn stderr $ "Running main picosat run"
     result <- if transSize config == ManySmall
         then runClauseMINMAXSAT (maxIndex aiD) desired' unwanted' cnf
-        else fmap (\res -> (res,[res])) <$>
+        else fmap (\res -> (res,error "smallTransitions only exists when transSize == ManySmall")) <$>
              runClauseSAT (maxIndex aiD) desired' unwanted' cnf
     case result of 
         Left musCNF -> do
@@ -367,9 +375,17 @@ runBritney config = do
                 hFlush h
 
             mbDo (hintsH config) $ \h -> do
-                forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                    L.hPut h $ generateHints aiD testing unstable builtBy thisTransitionNewAtomsIs
-                hFlush h
+                if transSize config == ManySmall
+                then do
+                    hPutStrLn h $ "# Full hint:"
+                    L.hPut h $ generateHints aiD testing unstable builtBy newAtomIs
+                    hPutStrLn h $ "# Small hints:"
+                    forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
+                        L.hPut h $ generateHints aiD testing unstable builtBy thisTransitionNewAtomsIs
+                    hFlush h
+                else do
+                    L.hPut h $ generateHints aiD testing unstable builtBy newAtomIs
+                    hFlush h
 
             mbDo (heidiH config) $ \h -> do
                 L.hPut h $ generateHeidi aiD newAtomIs

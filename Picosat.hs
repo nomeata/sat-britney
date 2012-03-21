@@ -244,7 +244,7 @@ runPicosatPMINMAX desired cnf = do
             Right . (maxSol',) <$> step 0 (filter (`IS.member` desiredS) maxSol')
   where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf (V.empty, snd cnf)
         desiredS    = IS.fromList desired
-        step 10 _   = return []
+        step 5 _   = return []
         step n []   = return []
         step n todo = do
             hPutStrLn stderr $ show (length todo) ++ " clauses left while finding next small solution..."
