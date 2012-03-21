@@ -155,14 +155,9 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
         -}
 
         dependsBadHull = {-# SCC "dependsBadHull" #-}
-            IxM.fromAscList $
-            map (\p ->
-               (p, IxS.seal $ fromMaybe (IxS.singleton p) $ IxM.lookup p dependsBadHull')
-            ) $
-            IxS.toList relevantBins
-          where
-            dependsBadHull' = IxM.filter (not . IxS.null) $
-                flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
+            IxM.map IxS.seal $
+            IxM.filter (not . IxS.null) $
+            flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
                 let deps = dependsRelWithConflictsHull IxM.! p
                     revDependsRel' = restrictRel revDependsRel deps
                 in IxS.unions [ hull
@@ -292,8 +287,11 @@ installabilityAtoms :: Config -> PackageInfo -> AtomIndex -> [Inst]
 installabilityAtoms config pi ai =
     [ Inst p d (piArch pi) |
     Inst p _ _ <- initialInstallabilityAtoms config pi ai,
-    d <- maybe [p] IxS.toList $ IxM.lookup p (dependsBadHull pi)
+    d <- IxS.toList $ reflexiveLookup p (dependsBadHull pi)
     ]
+
+reflexiveLookup :: Index a -> IxM.Map a (IxS.Pred a) -> IxS.Pred a
+reflexiveLookup x m = fromMaybe (IxS.seal $ IxS.singleton x) $ IxM.lookup x m
 
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
@@ -306,7 +304,7 @@ hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 forI <- IxS.toList (relevantBins pi),
-                let binIs = (dependsBadHull pi) IxM.! forI,
+                let binIs = reflexiveLookup forI (dependsBadHull pi),
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "Y" . indexInst ai $ Inst forI binI (piArch pi),
                 (disjunction, reason) <- depends pi IxM.! binI,
@@ -317,7 +315,7 @@ hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x
             ] ++
             [ NotBoth instI conflI ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
                 forI <- IxS.toList (relevantBins pi),
-                let binIs = (dependsBadHull pi) IxM.! forI,
+                let binIs = reflexiveLookup forI (dependsBadHull pi),
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "X" . indexInst ai $ Inst forI binI (piArch pi),
                 (disjunction, reason) <- conflicts pi IxM.! binI,
