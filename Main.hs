@@ -211,25 +211,30 @@ runBritney config = do
     let unmod = IxS.generalize maxTransition `IxS.intersection` binaries testing
     let piOutM = AM.build (arches config) $ \arch ->
             resolvePackageInfo config ai nonCandidateSet unmod arch [testing, unstable] [testingRPI, unstableRPI]
-    let piM = AM.map (\(PackageInfoOut {..}) -> PackageInfoIn {..}) piOutM
+    let piM = AM.map fst piOutM
+    let ps = mergePackageStats $ map snd (AM.elems piOutM)
     let aiD = foldr (generateInstallabilityAtoms config) ai (AM.elems piM)
 
-    forM_ (AM.toList piOutM) $ \(arch, PackageInfoOut {..}) -> do
-        hPutStrLn stderr $ "Out of " ++ show (IxS.size (binaries unstable `IxS.union` binaries testing)) ++ " binary packages, " ++ show (IxS.size unmod) ++ " are unmodified, but " ++ show (IxS.size affected) ++ " are possibly affected."
+    case ps of
+      (PackageStats {..}) -> do
+        hPrintf stderr "Out of %d binary packages, %d are unmodified, but %d are possibly affected.\n"
+            (IxS.size $ binaries unstable `IxS.union` binaries testing)
+            (IxS.size unmod)
+            (IxS.size $ IxS.unions $ map affected $ AM.elems piM)
 
         hPutStrLn stderr $ "The conflicts affecting most packages are:"
         mapM_ (hPutStrLn stderr) 
             [ "   " ++ show (pp ai c1) ++ " -#- " ++ show (pp ai c2) ++ " (" ++ show i ++ " packages)"
-            | ((c1,c2),i) <- take 10 conflictHistogram ]
+            | ((c1,c2),i) <- histogramToList 10 conflictHistogram ]
 
         hPutStrLn stderr $ "The packages appearing in most sets of relevant dependencies are:"
         mapM_ (hPutStrLn stderr) 
             [ "   " ++ show (pp ai p) ++ " (" ++ show i ++ " packages)"
-            | (p,i) <- take 10 relevantDepHistogram ]
+            | (p,i) <- histogramToList 10 relevantDepHistogram ]
 
         when (showStats config) $ do
-            let binCount = IxM.size depends
-                depCount = sum $ map length $ IxM.elems depends
+            let binCount = sum $ map (IxS.size . relevantBins) $ AM.elems piM
+                depCount = sum $ map (sum . map length . IxM.elems .depends) $ AM.elems piM
 
             {-
             hPrintf stderr "Non-conflict encoding: %d atoms and %d clauses\n" binCount depCount
@@ -248,13 +253,17 @@ runBritney config = do
             -}
 
             hPrintf stderr "Encoding considering only relevant conflicts/dependencies: %d atoms and %d clauses\n" 
-                (binCount + (sum $ map IxS.size $ IxM.elems $ dependsBadHull))
-                (sum $ map (length . (depends IxM.!)) $ concatMap IxS.toList $ IxM.elems $ dependsBadHull)
+                (binCount + (sum $ map (sum . map IxS.size . IxM.elems . dependsBadHull) $ AM.elems piM))
+                (sum $ map (\pi -> sum . map (length . (depends pi IxM.!)) . concatMap IxS.toList . IxM.elems . dependsBadHull $ pi) $ AM.elems piM)
 
-        hPutStrLn stderr $ "A total of " ++ show (IxS.size hasConflict) ++ " packages take part in " ++ show (sum $ map (length . concatMap fst) $ IxM.elems $ conflicts) ++ " conflicts, " ++ show (IxS.size hasConflictInDeps) ++ " have conflicts in dependencies, of which " ++ show (IxM.size dependsBadHull) ++ " have bad conflicts."
+        hPrintf stderr "A total of %d packages take part in %d conflicts, %d have conflicts in dependencies, of which %d have bad conflicts.\n"
+            (IxS.size $ hasConflict)
+            (sum $ map (sum . map (length . concatMap fst) . IxM.elems . conflicts) $ AM.elems piM)
+            (IxS.size $ hasConflictInDeps)
+            (sum $ map (IxM.size . dependsBadHull) $ AM.elems piM)
 
-        hPutStrLn stderr $ "Size of the relevant dependency hulls: " ++ show 
-            (sum $ map IxS.size $ IxM.elems $ dependsBadHull)
+        hPrintf stderr "Size of the relevant dependency hulls: %d\n"
+            (sum $ map (sum . map IxS.size . IxM.elems . dependsBadHull) $ AM.elems piM)
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex aiD)) ++ " atoms."
 

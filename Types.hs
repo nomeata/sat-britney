@@ -190,30 +190,25 @@ data RawPackageInfo = RawPackageInfo {
     
 type BuiltBy = IxM.Map Binary SrcI
 
-data PackageInfo =
-    PackageInfoOut {
-        piArch :: Arch,
-        relevantBins :: IxS.Set Binary, -- relevant for this arch
-        depends :: IxM.Map Binary [([BinI], ByteString)],
-        dependsRel :: IxM.Map Binary (IxS.Set Binary),
-        -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
-        dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)],
-        conflictsRel :: IxM.Map Binary (IxS.Set Binary),
-        hasConflict :: IxS.Set Binary,
-        hasConflictInDeps :: IxS.Set Binary,
-        affected :: IxS.Set Binary,
-        conflictHistogram :: [((BinI,BinI),Int)],
-        relevantDepHistogram :: [(BinI,Int)]
-        }
-    | PackageInfoIn {
-        piArch :: Arch,
-        relevantBins :: IxS.Set Binary, -- relevant for this arch
-        depends :: IxM.Map Binary [([BinI], ByteString)],
-        dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
-        conflicts :: IxM.Map Binary [([BinI], ByteString)],
-        affected :: IxS.Set Binary
-        }
+data PackageStats = PackageStats {
+    conflictHistogram :: M.Map (BinI,BinI) Int,
+    relevantDepHistogram :: M.Map BinI Int,
+    hasConflict :: IxS.Set Binary,
+    hasConflictInDeps :: IxS.Set Binary
+}
+    deriving (Show)
+
+data PackageInfo = PackageInfo {
+    piArch :: Arch,
+    relevantBins :: IxS.Set Binary, -- relevant for this arch
+    depends :: IxM.Map Binary [([BinI], ByteString)],
+    dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
+    conflicts :: IxM.Map Binary [([BinI], ByteString)],
+    affected :: IxS.Set Binary
+    -- conflictsRel :: IxM.Map Binary (IxS.Set Binary),
+    -- dependsRel :: IxM.Map Binary (IxS.Set Binary),
+    -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
+    }
     deriving (Show)
 
 data GeneralInfo = GeneralInfo {

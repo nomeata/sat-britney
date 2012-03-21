@@ -30,8 +30,8 @@ import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
-resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> [RawPackageInfo] -> PackageInfo
-resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = PackageInfoOut{..}
+resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> [RawPackageInfo] -> (PackageInfo, PackageStats)
+resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = (PackageInfo{..}, PackageStats {..})
   where buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
         -- All binaries from this arch and arch all
@@ -94,9 +94,6 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
         dependsHull = transitiveHull dependsRel
         
         conflictHistogram = {-# SCC "conflictHistogram" #-}
-            reverse $
-            sortBy (comparing snd) $
-            M.toList $ 
             M.unionsWith (+) $
             map (\(_,cs) ->
                 M.fromListWith (+) $
@@ -107,9 +104,9 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
             IxM.toList relevantConflicts
 
         relevantDepHistogram = {-# SCC "relevantDepHistogram" #-}
-            reverse $
-            sortBy (comparing snd) $
-            M.toList $ 
+            -- reverse $
+            -- sortBy (comparing snd) $
+            -- M.toList $ 
             M.unionsWith (+) $
             map (\(_,deps) ->
                 M.fromListWith (+) $
@@ -236,6 +233,16 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = Pa
           where checkArchReq ST.Nothing = True
                 checkArchReq (ST.Just (ArchOnly arches)) = piArch `elem` arches
                 checkArchReq (ST.Just (ArchExcept arches)) = piArch `notElem` arches
+
+mergePackageStats :: [PackageStats] -> PackageStats
+mergePackageStats pss = PackageStats conflictHistogram' relevantDepHistogram' hasConflict' hasConflictInDeps'
+  where conflictHistogram' = M.unionsWith (+) $ map conflictHistogram pss
+        relevantDepHistogram' = M.unionsWith (+) $ map relevantDepHistogram pss
+        hasConflict' = IxS.unions $ map hasConflict pss
+        hasConflictInDeps' = IxS.unions $ map hasConflictInDeps pss
+
+histogramToList :: Int -> M.Map a Int -> [(a,Int)]
+histogramToList n = take n . reverse . sortBy (comparing snd) . M.toList
 
 allPairs :: [a] -> [(a,a)]
 allPairs [] = []
