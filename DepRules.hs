@@ -300,7 +300,7 @@ generateInstallabilityAtoms config pi ai =
     foldl' (\ai i ->  fst (ai `addInst` i)) ai $ installabilityAtoms config pi ai
 
 hardDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
-hardDependencyRules config ai pi = (toProducer $ hardDependencies)
+hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x 
   where hardDependencies =
             {-# SCC "hardDependencies" #-}
             -- Dependencies
@@ -329,7 +329,7 @@ hardDependencyRules config ai pi = (toProducer $ hardDependencies)
                 inst@(Inst binI _ _) <- installabilityAtoms config pi ai,
                 let instI = genIndex . fromJustNote "V" . indexInst ai $ inst
             ]
-            
+
 softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
 softDependencyRules config ai pi = toProducer $ softDependencies
   where softDependencies =

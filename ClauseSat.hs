@@ -13,7 +13,7 @@ import LitSat
 import Picosat
 import Types
 import Indices
-import GHC.Exts ( augment ) 
+import GHC.Exts ( augment, build ) 
 import qualified Data.Vector as V
 import Control.Seq
 
@@ -35,7 +35,7 @@ allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 
 clauses2CNF :: AtomI -> Producer (Clause AtomI) -> CNF
 clauses2CNF (Index mv) clauses = (V.fromList conjs, mv)
-    where conjs = applyProducer clauses (\c -> augment (applyProducer (clause2CNF c))) [] `using` seqList rseq
+    where conjs = clauses (\c -> augment (clause2CNF c)) [] `using` seqList rseq
 
 clause2CNF :: Clause AtomI -> Producer Conj
 clause2CNF c@(OneOf as _) = toProducer
@@ -65,20 +65,20 @@ clause2CNF c@(Not a _) = toProducer
 
 -- TODO clauses are unsorted ATM
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
-cnf2Clauses clauses (conj,_) = toProducer $ filter check $ fromProducer clauses
-  where check c = any (`S.member` conjS) $ map (modify Intro.sort) $ fromProducer (clause2CNF c)
+cnf2Clauses clauses (conj,_) = toProducer $ filter check $ build clauses
+  where check c = any (`S.member` conjS) $ map (modify Intro.sort) $ build (clause2CNF c)
         conjS = S.fromList $ V.toList conj
 
 runClauseSAT :: AtomI -> Producer AtomI -> Producer AtomI -> CNF -> IO (Either CNF (S.Set AtomI))
 runClauseSAT mi desired unwanted cnf = do
-    result <- runPicosatPMAX (fromProducer $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
+    result <- runPicosatPMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
     case result of
         Left core -> return  $ Left core
         Right vars -> return $ Right $ varsToSet vars
 
 runClauseMINMAXSAT :: AtomI -> Producer AtomI -> Producer AtomI -> CNF -> IO (Either CNF (S.Set AtomI, [S.Set AtomI]))
 runClauseMINMAXSAT mi desired unwanted cnf = do
-    result <- runPicosatPMINMAX (fromProducer $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
+    result <- runPicosatPMINMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
     case result of
         Left core -> return  $ Left core
         Right (vars,varss) -> return $ Right $ (varsToSet vars, map varsToSet varss)
