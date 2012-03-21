@@ -241,11 +241,12 @@ runPicosatPMINMAX desired cnf = do
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just maxSol -> do
             let maxSol' = applyMask known maxSol
-            Right . (maxSol',) <$> step (filter (`IS.member` desiredS) maxSol')
+            Right . (maxSol',) <$> step 0 (filter (`IS.member` desiredS) maxSol')
   where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf (V.empty, snd cnf)
         desiredS    = IS.fromList desired
-        step []     = return []
-        step todo = do
+        step 10 _   = return []
+        step n []   = return []
+        step n todo = do
             hPutStrLn stderr $ show (length todo) ++ " clauses left while finding next small solution..."
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
                               (applyMask known) <$>
@@ -254,7 +255,7 @@ runPicosatPMINMAX desired cnf = do
                 todo' = filter (`IS.notMember` aMinSolS) todo
             when (length todo == length todo') $
                 hPutStr stderr $ "Solution does not contain any variable."
-            (aMinSol :) <$> step todo'
+            (aMinSol :) <$> step (succ n) todo'
 
 partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ V.unstablePartition check conjs
