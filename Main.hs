@@ -186,9 +186,9 @@ runBritney config = do
     hPutStrLn stderr $ "In unstable are " ++ show (IxS.size (sources unstable `IxS.difference` sources testing)) ++ " new sources, out of which " ++ show (IxS.size nonCandidateSet) ++ " are not candidates."
 
     mbDo (nonCandidatesH config) $ \h -> do
-        hPutStrLn stderr $ "The non-candidates are:"
+        hPutStrLn h $ "The non-candidates are:"
         forM_ (build nonCandidates) $ \(src, reason) ->
-            hPutStrLn stderr $ show (pp ai src) ++ " " ++ reason
+            hPutStrLn h $ show (pp ai src) ++ " " ++ reason
 
     let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
         desired = desiredAtoms unstable testing
