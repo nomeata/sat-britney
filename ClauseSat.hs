@@ -33,8 +33,8 @@ allAtoms :: Ord a => [Clause a] -> M.Map a ()
 allAtoms = M.fromList . map (\x -> (x,())) . concatMap atoms
 -}
 
-clauses2CNF :: AtomI -> Producer (Clause AtomI) -> CNF
-clauses2CNF (Index mv) clauses = (V.fromList conjs, mv)
+clauses2CNF :: Producer (Clause AtomI) -> CNF
+clauses2CNF clauses = V.fromList conjs
     where conjs = clauses (\c -> augment (clause2CNF c)) [] `using` seqList rseq
 
 clause2CNF :: Clause AtomI -> Producer Conj
@@ -65,20 +65,20 @@ clause2CNF c@(Not a _) = toProducer
 
 -- TODO clauses are unsorted ATM
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
-cnf2Clauses clauses (conj,_) = toProducer $ filter check $ build clauses
+cnf2Clauses clauses conj = toProducer $ filter check $ build clauses
   where check c = any (`S.member` conjS) $ map (modify Intro.sort) $ build (clause2CNF c)
         conjS = S.fromList $ V.toList conj
 
-runClauseSAT :: AtomI -> Producer AtomI -> Producer AtomI -> CNF -> IO (Either CNF (S.Set AtomI))
-runClauseSAT mi desired unwanted cnf = do
-    result <- runPicosatPMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
+runClauseSAT :: AtomI -> Producer AtomI -> Producer AtomI -> SATProb -> IO (Either CNF (S.Set AtomI))
+runClauseSAT mi desired unwanted sp = do
+    result <- runPicosatPMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) sp
     case result of
         Left core -> return  $ Left core
         Right vars -> return $ Right $ varsToSet vars
 
-runClauseMINMAXSAT :: AtomI -> Producer AtomI -> Producer AtomI -> CNF -> IO (Either CNF (S.Set AtomI, [S.Set AtomI]))
-runClauseMINMAXSAT mi desired unwanted cnf = do
-    result <- runPicosatPMINMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) cnf
+runClauseMINMAXSAT :: AtomI -> Producer AtomI -> Producer AtomI -> SATProb -> IO (Either CNF (S.Set AtomI, [S.Set AtomI]))
+runClauseMINMAXSAT mi desired unwanted sp = do
+    result <- runPicosatPMINMAX (build $ mapP unIndex desired `concatP` mapP (negate . unIndex) unwanted) sp
     case result of
         Left core -> return  $ Left core
         Right (vars,varss) -> return $ Right $ (varsToSet vars, map varsToSet varss)

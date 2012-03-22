@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns, DoAndIfThenElse #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns, DoAndIfThenElse, RecordWildCards, NamedFieldPuns #-}
 -- |
 -- Module: Picosat
 -- Copyright: (c) 2011 Joachim Breitner
@@ -7,8 +7,10 @@
 module Picosat
     ( Conj
     , CNF
+    , SATProb(..)
     , relaxer 
-    , conjs2Cnf
+    , conjs2SATProb
+    , conjs2PMAXSATProb
     , atom2Conj
     , atoms2Conj
     , combineCNF
@@ -48,15 +50,22 @@ import qualified Data.IntSet as IS
 import qualified Data.Set as S
 
 -- Remember largest variable
-type CNF = (V.Vector Conj, Int)
+type CNF = V.Vector Conj
 -- Conj is guaranteed to be ordered by absolute value
 type Conj = U.Vector Int32
 
 -- Known to have rage (-maxVar,maxVar)
 type AssignmentMask = UArray Int Bool
 
+data SATProb = SATProb {
+    maxAtom :: Int
+    , required :: CNF
+    , desired :: CNF
+    , knownAtoms :: Maybe AssignmentMask
+    }
+
 combineCNF :: CNF -> CNF -> CNF
-combineCNF (conj1,mi1) (conj2,mi2) = (conj1 V.++ conj2 , mi1 `max` mi2)
+combineCNF conj1 conj2 = conj1 V.++ conj2
 {-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj
@@ -65,8 +74,11 @@ atoms2Conj = U.fromList . map fromIntegral
 conj2Line :: Conj -> BS.ByteString
 conj2Line ls = BS.pack $ unwords (map show (U.toList ls)) ++ " 0\n"
 
-conjs2Cnf :: Int -> V.Vector Conj -> CNF
-conjs2Cnf m conjs = m `seq` (conjs, m)
+conjs2SATProb :: Int -> V.Vector Conj -> SATProb
+conjs2SATProb m conjs = m `seq` SATProb m conjs V.empty Nothing
+
+conjs2PMAXSATProb :: Int -> V.Vector Conj -> V.Vector Conj -> SATProb
+conjs2PMAXSATProb m required desired = m `seq` SATProb m required desired Nothing
 
 atom2Conj :: Int -> Conj
 {-# INLINE atom2Conj #-}
@@ -74,27 +86,30 @@ atom2Conj i = U.singleton (fromIntegral i)
 
 atom2Conj' = atom2Conj invalidExtra
 
-formatCNF :: CNF -> L.ByteString
-formatCNF (conjs,maxVar) = L.concat
+isPMAXSAT (SATProb {..}) = not (V.null desired)
+isEmptyProblem (SATProb {..}) = V.null required && V.null desired
+
+formatCNF :: SATProb -> L.ByteString
+formatCNF sp | isPMAXSAT sp = error "formatCNF cannot format PMAXSAT problem"
+formatCNF (SATProb {..}) = L.concat
     [ L.pack "c LitSat CNF generator\n"
-    , L.pack $ unwords ["p", "cnf", show maxVar, show (V.length conjs)] ++ "\n"
-    , L.fromChunks $ map conj2Line $ V.toList conjs
+    , L.pack $ unwords ["p", "cnf", show maxAtom, show (V.length required)] ++ "\n"
+    , L.fromChunks $ map conj2Line $ V.toList required
     ]
 
-formatCNFPMAX :: CNF -> CNF -> L.ByteString
-formatCNFPMAX (conjs, maxVar1) (relaxable, maxVar2) = L.concat $
+formatCNFPMAX :: SATProb -> L.ByteString
+formatCNFPMAX (SATProb {..}) = L.concat $
     [ L.pack "c LitSat CNF generator\n"
     , L.pack $ unwords
-        ["p", "wcnf", show maxVar, show (numClauses + numRelaxable), topN ] ++ "\n"
-    , L.fromChunks $ prependEach top  $ map conj2Line $ V.toList conjs
-    , L.fromChunks $ prependEach soft $ map conj2Line $ V.toList relaxable
+        ["p", "wcnf", show maxAtom, show (numClauses + numRelaxable), topN ] ++ "\n"
+    , L.fromChunks $ prependEach top  $ map conj2Line $ V.toList required
+    , L.fromChunks $ prependEach soft $ map conj2Line $ V.toList desired
     ]
-  where numClauses = V.length conjs
-        numRelaxable = V.length relaxable
+  where numClauses = V.length required
+        numRelaxable = V.length desired
         topN = show (numRelaxable + 2)
         top = BS.pack (topN ++ " ")
         soft = BS.pack ("1 ")
-        maxVar = maxVar1 `max` maxVar2
         prependEach a [] = []
         prependEach a l = (a:) . intersperse a $ l
 
@@ -102,14 +117,15 @@ formatCNFPMAX (conjs, maxVar1) (relaxable, maxVar2) = L.concat $
 parseConj :: BS.ByteString -> Conj
 parseConj = atoms2Conj . filter (/=0) . map int . BS.words
                     
-parseCNF :: Int -> BS.ByteString -> CNF
-parseCNF m bs = 
-    ( V.fromList . map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines $ bs
-    , m )
+parseCNF :: BS.ByteString -> CNF
+parseCNF bs = 
+    V.fromList . map parseConj . dropWhile (\l -> BS.null l || BS.head l `elem` "cp") . BS.lines $
+    bs
 
-runPicosat :: CNF -> IO (Either (CNF) [Int])
-runPicosat cnf = do
-    let cnfString = formatCNF cnf
+runPicosat :: SATProb -> IO (Either (CNF) [Int])
+runPicosat sp | isPMAXSAT sp = error "runPicosat cannot handle PMAXSAT problem"
+runPicosat sp = do
+    let cnfString = formatCNF sp
 
     (coreInFd, coreOutFd) <- createPipe
     coreIn <- fdToHandle coreInFd
@@ -133,7 +149,7 @@ runPicosat cnf = do
             hClose hout
             musString <- BS.hGetContents coreIn
             ensureSuccess [10,20] picoProc procHandle
-            let mus = parseCNF (snd cnf) musString
+            let mus = parseCNF musString
             --let annotatedMus = findConj mus cnf
             return (Left mus)
         "s SATISFIABLE" -> do
@@ -153,20 +169,22 @@ runPicosat cnf = do
         s -> do
             error $ "Cannot parse picostat status output: " ++ s
 
+{-
 findConj :: CNF -> CNF -> CNF
 findConj (mus,_) = first (V.filter (`S.member` set))
   where set = S.fromList (V.toList mus)
+-}
 
 -- Takes a CNF and removes clauses until it becomes satisfiable.
 -- The first argument gives the CNFs to relax
 -- If successful, the first CNF returned contains the non-removed clauses,
 -- while the second element in the tuple contains the removed clauses.
-relaxer :: CNF -> CNF -> IO (Either CNF (CNF,CNF))
-relaxer relaxable cnf = do
-    ret <- runPMAXSolver cnf relaxable
+relaxer :: SATProb -> IO (Either CNF (CNF,CNF))
+relaxer sp@(SATProb {..}) = do
+    ret <- runPMAXSolver sp
     case ret of
         Nothing -> do
-            ret <- runPicosat cnf
+            ret <- runPicosat sp
             case ret of
                 Left mus -> do
                     hPutStrLn stderr $ "Non-relaxable clauses are not satisfiable"
@@ -175,7 +193,7 @@ relaxer relaxable cnf = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a solution. Possible bug in the solvers?"
         Just vars -> do
-            let (satisfied, remove) = partitionSatClauses relaxable vars
+            let (satisfied, remove) = partitionSatClauses maxAtom desired vars
             {- Code to check the PMAX-SAT solver if we do not trust it: 
             let s = S.fromList remove
             let (removed,leftOver) = partition (`S.member`s) relaxable
@@ -193,13 +211,14 @@ relaxer relaxable cnf = do
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion maximal with regard to these atoms.
-runPicosatPMAX :: [Int] -> CNF -> IO (Either CNF [Int])
-runPicosatPMAX [] cnf = runPicosat cnf
-runPicosatPMAX desired cnf = do
-    ret <- runPMAXSolver cnf relaxable
+runPicosatPMAX :: [Int] -> SATProb -> IO (Either CNF [Int])
+runPicosatPMAX _ sp | isPMAXSAT sp = error "runPicosatPMAX must not be passed a PMAXSAT instance"
+runPicosatPMAX [] sp = runPicosat sp
+runPicosatPMAX desiredAtoms sp = do
+    ret <- runPMAXSolver (sp { desired })
     case ret of
         Nothing -> do
-            ret <- runPicosat cnf
+            ret <- runPicosat (sp { desired = V.empty })
             case ret of
                 Left mus ->
                     return $ Left mus
@@ -207,33 +226,35 @@ runPicosatPMAX desired cnf = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just solution -> return (Right solution)
-    where relaxable = (V.fromList (map atom2Conj desired), snd cnf)
+    where desired = V.fromList (map atom2Conj desiredAtoms)
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a solution that is set-inclusion minimal with regard to these atoms, but
 -- includes at least one.
-runPicosatPMIN1 :: [Int] -> CNF -> IO (Maybe [Int])
-runPicosatPMIN1 [] cnf = error $ "Cannot call runPicosatPMIN1 with an empty set of desired clauses"
-runPicosatPMIN1 desired cnf = runPMAXSolver cnf relaxable
-    where relaxable = (V.fromList (disj : map atom2Conj desired), snd cnf)
-          disj = atoms2Conj desired
+runPicosatPMIN1 :: [Int] -> SATProb -> IO (Maybe [Int])
+runPicosatPMIN1 _ sp | isPMAXSAT sp = error "runPicosatPMIN1 must not be passed a PMAXSAT instance"
+runPicosatPMIN1 [] _ = error $ "Cannot call runPicosatPMIN1 with an empty set of desired clauses"
+runPicosatPMIN1 desiredAtoms sp = runPMAXSolver (sp { desired })
+    where desired = V.fromList (disj : map atom2Conj desiredAtoms)
+          disj = atoms2Conj desiredAtoms
 
 -- Takes a CNF and a list of desired atoms (positive or negative), and it finds
 -- a set-inclusion minimal solutions that covers the set-inclusion maximal
 -- solution, both are returned.
-runPicosatPMINMAX :: [Int] -> CNF -> IO (Either (CNF) ([Int],[[Int]]))
-runPicosatPMINMAX [] cnf = do 
-    ret <- runPicosat cnf
+runPicosatPMINMAX :: [Int] -> SATProb -> IO (Either (CNF) ([Int],[[Int]]))
+runPicosatPMINMAX _ sp | isPMAXSAT sp = error "runPicosatPMINMAX must not be passed a PMAXSAT instance"
+runPicosatPMINMAX [] sp = do 
+    ret <- runPicosat sp
     case ret of
         Left mus -> return (Left mus)
         Right solution -> return (Right (solution, [solution]))
-runPicosatPMINMAX desired cnf = do
+runPicosatPMINMAX desired sp = do
     ret <- if isJust sret
-           then runPMAXSolver cnf' (V.fromList (map atom2Conj desired), snd cnf)
+           then runPMAXSolver (ssp { desired = V.fromList (map atom2Conj desired) })
            else return Nothing
     case ret of 
         Nothing -> do
-            ret <- runPicosat cnf
+            ret <- runPicosat sp
             case ret of
                 Left mus ->
                     return $ Left mus
@@ -241,55 +262,55 @@ runPicosatPMINMAX desired cnf = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just maxSol -> do
-            let maxSol' = applyMask known maxSol
+            let maxSol' = applyMaskMB (knownAtoms ssp) maxSol
             Right . (maxSol',) <$> step 0 (filter (`IS.member` desiredS) maxSol')
-  where sret@(~(Just (cnf', _, known))) = simplifyCNF cnf (V.empty, snd cnf)
+  where sret@(~(Just ssp)) = simplifyCNF sp
         desiredS    = IS.fromList desired
         step 5 _   = return []
         step n []   = return []
         step n todo = do
             hPutStrLn stderr $ show (length todo) ++ " clauses left while finding next small solution..."
             aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
-                              (applyMask known) <$>
-                runPicosatPMAX (map negate desired) (first (atoms2Conj todo `V.cons`) cnf')
+                              (applyMaskMB (knownAtoms ssp)) <$>
+                runPicosatPMAX (map negate desired) (sp { required = atoms2Conj todo `V.cons` required sp })
             let aMinSolS = IS.fromList aMinSol
                 todo' = filter (`IS.notMember` aMinSolS) todo
             when (length todo == length todo') $
                 hPutStr stderr $ "Solution does not contain any variable."
             (aMinSol :) <$> step (succ n) todo'
 
-partitionSatClauses :: CNF -> [Int] -> (CNF,CNF)
-partitionSatClauses (conjs,maxVar) vars = ( (,maxVar) *** (,maxVar)) $ V.unstablePartition check conjs
+partitionSatClauses :: Int -> CNF -> [Int] -> (CNF,CNF)
+partitionSatClauses maxVar conjs vars =  V.unstablePartition check conjs
   where --array = listBitArray (1,maxVar) $ map (>0) vars
         array = array' (1,maxVar) [ (i, True) | i <- vars, i > 0]
         check = U.any (\i -> (i > 0) == unsafeAt' array (abs (fromIntegral i)))
 
 
-runPMAXSolver :: CNF -> CNF -> IO (Maybe [Int])
-runPMAXSolver cnf desired = do
+runPMAXSolver :: SATProb -> IO (Maybe [Int])
+runPMAXSolver sp = do
     -- hPrint stderr (length (fst cnf), length (fst desired), length (fst cnf'), length (fst desired'))
-    case simplifyCNF cnf desired of
-        Just (cnf',desired', known) -> fmap (applyMask known) <$> runSat4j cnf' desired'
+    case simplifyCNF sp of
+        Just sp' -> fmap (applyMaskMB (knownAtoms sp')) <$> runSat4j sp'
         Nothing -> return Nothing
 
-runMSUnCore :: CNF -> CNF -> IO (Maybe [Int])
+runMSUnCore :: SATProb -> IO (Maybe [Int])
 runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" ["-v","0",filename]
 
-runMiniMaxSat :: CNF -> CNF -> IO (Maybe [Int])
+runMiniMaxSat :: SATProb -> IO (Maybe [Int])
 runMiniMaxSat = runAPMAXSolver $ \filename ->  proc "./minimaxsat" ["-F=2",filename]
 
-runSat4j :: CNF -> CNF -> IO (Maybe [Int])
+runSat4j :: SATProb -> IO (Maybe [Int])
 runSat4j = runAPMAXSolver $  \filename -> proc "java" ["-jar","solvers/sat4j-maxsat.jar",filename]
 
-runClasp :: CNF -> CNF -> IO (Maybe [Int])
+runClasp :: SATProb -> IO (Maybe [Int])
 runClasp = runAPMAXSolver (\filename ->  proc "clasp" $ ["--quiet=1,2",filename])
 
-runAPMAXSolver :: (FilePath -> CreateProcess) -> CNF -> CNF -> IO (Maybe [Int])
-runAPMAXSolver cmd cnf desired =
-    if V.null (fst cnf) && V.null (fst desired) then return (Just [1..snd cnf]) else do
+runAPMAXSolver :: (FilePath -> CreateProcess) -> SATProb -> IO (Maybe [Int])
+runAPMAXSolver cmd sp =
+    if isEmptyProblem sp then return (Just [1..maxAtom sp]) else do
     getTemporaryDirectory  >>= \tmpdir -> do
     withTempFile tmpdir "sat-britney-.wcnf" $ \tmpfile handle -> do
-    let cnfString = formatCNFPMAX cnf desired
+    let cnfString = formatCNFPMAX sp
 
     L.hPut handle cnfString
     hClose handle
@@ -338,6 +359,7 @@ showCmdSpec (RawCommand cmd args) = concat $ intersperse " " (cmd:args)
 -- | This takes hard and soft clauses and propagats constants (e.g. variables
 -- fixed by a top level clause), removing variables from clauses or clauses
 -- that are known.
+{-
 simplifyCNF' :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
 --simplifyCNF (hard,maxVar) (soft,_)  = Just ((hard,maxVar), (soft,maxVar), emptyMask)
 --  where emptyMask = array' (-maxVar, maxVar) []
@@ -370,11 +392,12 @@ simplifyCNF' (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar
                 V.filter (not . surelyTrueConjs) $ soft 
             finalMask = unionsMask ms
         emptyMask = array' (-maxVar, maxVar) [] :: AssignmentMask
+-}
 
-simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
-simplifyCNF (hard, maxVar) (soft, _) = 
+simplifyCNF :: SATProb -> Maybe SATProb
+simplifyCNF (SATProb {..}) = 
     let finalMask = runSTUArray $ do
-            mask <- newArray (-maxVar,maxVar) False
+            mask <- newArray (-maxAtom,maxAtom) False
             fix $ \repeat -> do
                 currentMask <- freeze mask
                 let knownFalse i = unsafeAt' currentMask (fromIntegral (-i))
@@ -385,7 +408,7 @@ simplifyCNF (hard, maxVar) (soft, _) =
                                 [x] | not (knownTrue x) -> Just x
                                 _   -> Nothing
                         ) $
-                        V.toList hard
+                        V.toList required
                 if null newSingletons
                 then return ()
                 else do
@@ -396,15 +419,15 @@ simplifyCNF (hard, maxVar) (soft, _) =
         knownTrue i = unsafeAt' finalMask (fromIntegral i)
         surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
             U.any knownTrue
-        hard' = {-# SCC "hard'" #-}
+        required' = {-# SCC "required'" #-}
             V.map (U.filter (not . knownFalse)) .
-            V.filter (not . surelyTrueConjs) $ hard 
-        soft' = {-# SCC "soft'" #-}
+            V.filter (not . surelyTrueConjs) $ required 
+        desired' = {-# SCC "desired'" #-}
             V.filter (not . U.null) .
             V.map (U.filter (not . knownFalse)) .
-            V.filter (not . surelyTrueConjs) $ soft 
+            V.filter (not . surelyTrueConjs) $ desired 
     in  if isValidMask finalMask
-        then Just ((hard',maxVar), (soft',maxVar), finalMask)
+        then Just (SATProb maxAtom required' desired' (Just finalMask))
         else Nothing
 
 
@@ -430,6 +453,9 @@ applyMask mask = map fixAtom
   where fixAtom i | unsafeAt' mask i    = i
                   | unsafeAt' mask (-i) = -i
                   | otherwise           = i
+
+applyMaskMB :: Maybe AssignmentMask -> [Int] -> [Int]
+applyMaskMB  = maybe id applyMask
 
 unionsMask [] = error "Cannot union empty set of masks"
 unionsMask ms@(m1:_) =  array' (l,u) [ (i, True) | i <- [l..u] , any (`unsafeAt'` i) ms ]

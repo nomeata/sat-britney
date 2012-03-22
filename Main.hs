@@ -196,7 +196,7 @@ runBritney config = do
         -- that would yield far too many individual removals
         unwanted | transSize config == ManySmall = toProducer [] 
                  | otherwise        = unwantedAtoms unstable testing
-        cnfTrans = {-# SCC "cnfTrans" #-} clauses2CNF (maxIndex ai) transRules
+        cnfTrans = {-# SCC "cnfTrans" #-} conjs2SATProb (unIndex $ maxIndex ai) $ clauses2CNF transRules
 
     hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."
     result <- runClauseSAT (maxIndex ai) desired unwanted cnfTrans
@@ -281,8 +281,9 @@ runBritney config = do
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
                  depHard
-        cnfT = clauses2CNF (maxIndex aiD) rulesT `combineCNF` cnfTrans
-        relaxableClauses = clauses2CNF (maxIndex aiD) relaxable
+        spT = conjs2PMAXSATProb (unIndex $ maxIndex aiD)
+                (clauses2CNF rulesT `combineCNF` required cnfTrans)
+                (clauses2CNF relaxable)
 
     hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
         show (length (build relaxable)) ++ " soft clauses, with " ++ show (length (build desired)) ++ " desired and " ++ show (length (build unwanted)) ++ " unwanted atoms."
@@ -297,7 +298,7 @@ runBritney config = do
         hFlush h
     
     hPutStrLn stderr $ "Relaxing testing to a consistent set..."
-    removeClauseE <- relaxer relaxableClauses cnfT
+    removeClauseE <- relaxer spT
     leftConj <- case removeClauseE of
         Left musCNF -> do
             hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
@@ -305,7 +306,7 @@ runBritney config = do
             hPrint stderr $ nest 4 (vcat (map (pp aiD) (build mus)))
             exitFailure
         Right (leftConj,removeConjs) -> do
-            hPutStrLn stderr $ show (V.length (fst removeConjs)) ++ " clauses are removed to make testing conform"
+            hPutStrLn stderr $ show (V.length removeConjs) ++ " clauses are removed to make testing conform"
             mbDo (relaxationH config) $ \h -> do
                 let removeClause = cnf2Clauses relaxable removeConjs 
                 hPrint h $ nest 4 (vcat (map (pp aiD) (build removeClause)))
@@ -315,11 +316,12 @@ runBritney config = do
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
         cleanedRules = toProducer extraRules `concatP` depHard
-        cnf = clauses2CNF (maxIndex aiD) cleanedRules `combineCNF` leftConj `combineCNF` cnfTrans
+        sp = conjs2SATProb (unIndex $ maxIndex aiD)
+                (clauses2CNF  cleanedRules `combineCNF` leftConj `combineCNF` required cnfTrans)
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
-        L.hPut h $ formatCNF cnf
+        L.hPut h $ formatCNF sp
         hFlush h
 
     mbDo (clausesH config) $ \h -> do
@@ -342,9 +344,9 @@ runBritney config = do
 
     hPutStrLn stderr $ "Running main picosat run"
     result <- if transSize config == ManySmall
-        then runClauseMINMAXSAT (maxIndex aiD) desired' unwanted' cnf
+        then runClauseMINMAXSAT (maxIndex aiD) desired' unwanted' sp
         else fmap (\res -> (res,error "smallTransitions only exists when transSize == ManySmall")) <$>
-             runClauseSAT (maxIndex aiD) desired' unwanted' cnf
+             runClauseSAT (maxIndex aiD) desired' unwanted' sp
     case result of 
         Left musCNF -> do
             hPutStrLn stderr $
