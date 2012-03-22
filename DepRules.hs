@@ -304,8 +304,8 @@ generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
     foldl' (\ai i ->  fst (ai `addInst` i)) ai $ installabilityAtoms config pi ai
 
-hardDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
-hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x 
+dependencyRules :: Config -> AtomIndex -> IxS.Set Binary -> PackageInfo -> Producer (Clause AtomI)
+dependencyRules config ai uninst pi f x = (toProducer $ hardDependencies) f x 
   where hardDependencies =
             {-# SCC "hardDependencies" #-}
             -- Dependencies
@@ -333,19 +333,14 @@ hardDependencyRules config ai pi f x = (toProducer $ hardDependencies) f x
             [ Implies instI [genIndex binI] "the package needs to be present" |
                 inst@(Inst _ binI _) <- installabilityAtoms config pi ai,
                 let instI = genIndex . fromJustNote "V" . indexInst ai $ inst
-            ]
-
-softDependencyRules :: Config -> AtomIndex -> PackageInfo -> Producer (Clause AtomI)
-softDependencyRules config ai pi = toProducer $ softDependencies
-  where softDependencies =
-            {-# SCC "softDependencies" #-}
+            ] ++
             [Implies (genIndex forI) [genIndex instI] "the package ought to be installable." |
                 forI <- IxM.keys (depends pi),
+                forI `IxS.notMember` uninst,
                 let Binary _ _ a' = ai `lookupBin` forI,
                 ST.maybe (piArch pi == archForAll config) (== piArch pi) a',
                 let instI = genIndex . fromJustNote "X" . indexInst ai $ Inst forI forI (piArch pi)
             ]
-
 
 -- |Check if a version number satisfies a version requirement.
 checkVersionReq :: ST.Maybe VersionReq -> Maybe DebianVersion -> Bool

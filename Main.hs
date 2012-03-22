@@ -29,6 +29,7 @@ import qualified IndexMap as IxM
 import qualified ArchMap as AM
 
 import ParseSuite
+import DebCheck
 import TransRules
 import DepRules
 import Types
@@ -162,6 +163,11 @@ runBritney config = do
     let ai1 = emptyIndex
     (unstable, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, testingRPI, ai)  <- parseSuite config ai2 (dir config </> "testing")
+    hPutStrLn stderr $ "Figuring out what packages are not installable in testing:"
+    uninstallable <- AM.buildM (arches config) $
+        findUninstallablePackages config ai (dir config </> "testing")
+    hPutStrLn stderr $ "Uninstallability counts: " ++ intercalate ", "
+        [ show a ++ ": " ++ show (IxS.size s) | (a,s) <- AM.toList uninstallable]
 
     hPutStrLn stderr $ "AtomIndex knows about " ++ show (unIndex (maxIndex ai)) ++ " atoms."
 
@@ -275,49 +281,19 @@ runBritney config = do
 
     hPutStrLn stderr $ "After adding installability atoms, AtomIndex knows about " ++ show (unIndex (maxIndex aiD)) ++ " atoms."
 
-    let depHard = unionMapP (hardDependencyRules config aiD) $ AM.elems piM 
-        depSoft = unionMapP (softDependencyRules config aiD) $ AM.elems piM
-        relaxable = depSoft
+    let depRules = unionMapP
+            (\pi -> dependencyRules config aiD (uninstallable AM.! piArch pi) pi) $
+            AM.elems piM 
         rulesT = mapP (\i -> Not i "we are investigating testing") desired `concatP`
                  mapP (\i -> OneOf [i] "we are investigating testing") unwanted `concatP`
-                 depHard
-        spT = conjs2PMAXSATProb (unIndex $ maxIndex aiD)
-                (clauses2CNF rulesT `combineCNF` required cnfTrans)
-                (clauses2CNF relaxable)
+                 depRules
 
-    hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " hard and " ++
-        show (length (build relaxable)) ++ " soft clauses, with " ++ show (length (build desired)) ++ " desired and " ++ show (length (build unwanted)) ++ " unwanted atoms."
-
-    mbDo (clausesUnrelaxH config) $ \h -> do
-        hPutStrLn stderr $ "Writing unrelaxed SAT problem as literal clauses"
-        mapM_ (hPrint h . nest 4 . pp aiD) (build transRules)
-        hPutStrLn h ""
-        mapM_ (hPrint h . nest 4 . pp aiD) (build rulesT)
-        hPutStrLn h ""
-        mapM_ (hPrint h . nest 4 . pp aiD) (build relaxable)
-        hFlush h
-    
-    hPutStrLn stderr $ "Relaxing testing to a consistent set..."
-    removeClauseE <- relaxer spT
-    leftConj <- case removeClauseE of
-        Left musCNF -> do
-            hPutStrLn stderr $ "The following unrelaxable clauses are conflicting in testing:"
-            let mus = cnf2Clauses relaxable musCNF 
-            hPrint stderr $ nest 4 (vcat (map (pp aiD) (build mus)))
-            exitFailure
-        Right (leftConj,removeConjs) -> do
-            hPutStrLn stderr $ show (V.length removeConjs) ++ " clauses are removed to make testing conform"
-            mbDo (relaxationH config) $ \h -> do
-                let removeClause = cnf2Clauses relaxable removeConjs 
-                hPrint h $ nest 4 (vcat (map (pp aiD) (build removeClause)))
-                hFlush h
-            return leftConj
-
+    hPutStrLn stderr $ "Constructed " ++ show (length (build rulesT)) ++ " clauses, with " ++ show (length (build desired)) ++ " desired and " ++ show (length (build unwanted)) ++ " unwanted atoms."
 
     let extraRules = maybe [] (\si -> [OneOf [si] "it was requested"]) (migrateThisI config)
-        cleanedRules = toProducer extraRules `concatP` depHard
+        amendedRules = toProducer extraRules `concatP` depRules
         sp = conjs2SATProb (unIndex $ maxIndex aiD)
-                (clauses2CNF  cleanedRules `combineCNF` leftConj `combineCNF` required cnfTrans)
+                (clauses2CNF amendedRules `combineCNF` required cnfTrans)
 
     mbDo (dimacsH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem im DIMACS problem"
@@ -327,8 +303,7 @@ runBritney config = do
     mbDo (clausesH config) $ \h -> do
         hPutStrLn stderr $ "Writing SAT problem as literal clauses"
         mapM_ (hPrint h . nest 4 . pp aiD) (build transRules)
-        mapM_ (hPrint h . nest 4 . pp aiD) (build cleanedRules)
-        mapM_ (hPrint h . nest 4 . pp aiD) (build (cnf2Clauses relaxable leftConj))
+        mapM_ (hPrint h . nest 4 . pp aiD) (build amendedRules)
         hFlush h
 
     {-
@@ -352,7 +327,7 @@ runBritney config = do
             hPutStrLn stderr $
                 "No suitable set of packages could be determined, " ++
                 "because the following requirements conflict:"
-            let mus = cnf2Clauses (transRules `concatP` cleanedRules `concatP` relaxable) musCNF 
+            let mus = cnf2Clauses (transRules `concatP` amendedRules) musCNF 
             unless (isJust (migrateThis config)) $ do
                 hPutStrLn stderr "(This should not happen, as this is detected earlier)"
             print (nest 4 (vcat (map (pp aiD) (build mus))))

@@ -102,3 +102,6 @@ fold f x (ArchMap m) = M.fold f x m
 
 build :: [Arch] -> (Arch -> b) -> Map b
 build as f = fromList [ (a, f a) | a <- as ]
+
+buildM :: [Arch] -> (Arch -> IO b) -> IO (Map b)
+buildM as f = fromList <$> sequence [ do { x <- f a ; return (a , x) } | a <- as ]
