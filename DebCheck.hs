@@ -30,7 +30,11 @@ findUninstallablePackages config ai dir arch = do
         uninstallable <- collectEdosOutput file
         return $
             IxS.fromList $
-            map (\bin -> fromJust $ ai `indexBin` bin) $
+            map (\bin -> 
+                case ai `indexBin` bin of
+                    Just binI -> binI
+                    Nothing -> error $ show bin ++ " not found in AtomIndex"
+                ) $
             map (\(name,arch,version) ->
                 Binary (BinName (BS.pack name))
                        (DebianVersion (BS.pack version))
