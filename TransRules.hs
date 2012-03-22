@@ -38,7 +38,7 @@ calculateBuiltBy = IxM.unions . map builtByR
 findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults
     -> Producer (SrcI, String)
 findNonCandidates config ai unstable testing general builtBy hr f x =
-    (toProducer $ outdated ++ obsolete ++ tooyoung ++ blocked ++ isMoreBuggy) f x
+    (toProducer $ outdated ++ missingArch ++ obsolete ++ tooyoung ++ blocked ++ isMoreBuggy) f x
   where tooyoung = 
             -- packages need to be old enough
             [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
@@ -48,7 +48,6 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
                              urgencies general `combine` minAges config $ src,
                 age <= minAge
             ] 
-        {-        
         outdated = 
             -- release architectures ought not to be out of date
             [ (newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
@@ -58,10 +57,9 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
                 newer <- newerSources unstable IxM.! srcI,
                 newer `IxS.notMember` sources testing
             ]
-        -}
-        outdated = 
-            -- release architectures ought not to be out of date
-            [ (srcIu, "is out of date: " ++ show a ++ " not up-to-date in unstable") |
+        missingArch = 
+            -- release architectures ought not be missing in unstable
+            [ (srcIu, "is out of date: " ++ show a ++ " not built in unstable") |
                 (srcIt, archSt) <- IxM.toList (buildsArches testing),
                 let (Source pkg vt) = ai `lookupSrc` srcIt,
                 srcIu <- fromMaybe [] $ M.lookup pkg (sourceNames unstable),
