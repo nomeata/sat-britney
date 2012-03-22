@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns, DoAndIfThenElse #-}
 -- |
 -- Module: Picosat
 -- Copyright: (c) 2011 Joachim Breitner
@@ -40,6 +40,7 @@ import Data.BitArray
 import Data.Array.Base (unsafeAt)
 import Data.Array.Unboxed
 import Data.Array.ST
+import qualified Data.Array.MArray as MArray
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as U
 
@@ -337,10 +338,10 @@ showCmdSpec (RawCommand cmd args) = concat $ intersperse " " (cmd:args)
 -- | This takes hard and soft clauses and propagats constants (e.g. variables
 -- fixed by a top level clause), removing variables from clauses or clauses
 -- that are known.
-simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
+simplifyCNF' :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
 --simplifyCNF (hard,maxVar) (soft,_)  = Just ((hard,maxVar), (soft,maxVar), emptyMask)
 --  where emptyMask = array' (-maxVar, maxVar) []
-simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
+simplifyCNF' (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
   where go ms (hard,maxVar) (soft,_) = if null singletons
             then if isValidMask finalMask
                  then Just ((hard,maxVar), (soft,maxVar), finalMask)
@@ -354,10 +355,10 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
             knownAtomsA = {-# SCC "knownAtomsA" #-}
                 array' (-maxVar, maxVar)
                          [ (fromIntegral i, True) | (U.toList -> [i]) <- singletons] 
-            surelyTrueAtom i = {-# SCC "surelyTrueAtom" #-}
+            knownTrue i = {-# SCC "knownTrue" #-}
                 unsafeAt' knownAtomsA (fromIntegral i)
             surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
-                U.any surelyTrueAtom
+                U.any knownTrue
             knownFalse i = {-# SCC "knownFalse" #-}
                 unsafeAt' knownAtomsA (fromIntegral (-i))
             hard' = {-# SCC "hard'" #-}
@@ -370,12 +371,50 @@ simplifyCNF (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar)
             finalMask = unionsMask ms
         emptyMask = array' (-maxVar, maxVar) [] :: AssignmentMask
 
+simplifyCNF :: CNF -> CNF -> Maybe (CNF, CNF, AssignmentMask)
+simplifyCNF (hard, maxVar) (soft, _) = 
+    let finalMask = runSTUArray $ do
+            mask <- newArray (-maxVar,maxVar) False
+            fix $ \repeat -> do
+                currentMask <- freeze mask
+                let knownFalse i = unsafeAt' currentMask (fromIntegral (-i))
+                    knownTrue i = unsafeAt' currentMask (fromIntegral i)
+                    newSingletons = 
+                        mapMaybe (\c ->
+                            case filter (not . knownFalse) $ U.toList c of
+                                [x] | not (knownTrue x) -> Just x
+                                _   -> Nothing
+                        ) $
+                        V.toList hard
+                if null newSingletons
+                then return ()
+                else do
+                    forM_ newSingletons $ \c -> writeArray mask (fromIntegral c) True
+                    repeat
+            return mask
+        knownFalse i = unsafeAt' finalMask (fromIntegral (-i))
+        knownTrue i = unsafeAt' finalMask (fromIntegral i)
+        surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
+            U.any knownTrue
+        hard' = {-# SCC "hard'" #-}
+            V.map (U.filter (not . knownFalse)) .
+            V.filter (not . surelyTrueConjs) $ hard 
+        soft' = {-# SCC "soft'" #-}
+            V.filter (not . U.null) .
+            V.map (U.filter (not . knownFalse)) .
+            V.filter (not . surelyTrueConjs) $ soft 
+    in  if isValidMask finalMask
+        then Just ((hard',maxVar), (soft',maxVar), finalMask)
+        else Nothing
+
+
 array' :: (Int, Int) -> [(Int, Bool)] -> AssignmentMask
 array' (l,u) assoc = runSTUArray $ do
     arr <- newArray (l,u) False
     mapM_ (uncurry (writeArray arr)) assoc
     return arr
 
+unsafeAt' :: AssignmentMask -> Int -> Bool
 unsafeAt' arr i = unsafeAt arr $ index (bounds arr) i
 {-# INLINE unsafeAt' #-}
 
