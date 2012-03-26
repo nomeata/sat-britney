@@ -165,7 +165,7 @@ runBritney config = do
     (testing, testingRPI, ai)  <- parseSuite config ai2 (dir config </> "testing")
     hPutStrLn stderr $ "Figuring out what packages are not installable in testing:"
     uninstallable <- AM.buildM (arches config) $
-        findUninstallablePackages config ai (dir config </> "testing")
+        findUninstallablePackages config ai testing (dir config </> "testing")
     hPutStrLn stderr $ "Uninstallability counts: " ++ intercalate ", "
         [ show a ++ ": " ++ show (IxS.size s) | (a,s) <- AM.toList uninstallable]
 

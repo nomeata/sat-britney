@@ -13,14 +13,16 @@ import Data.Char
 import Data.Functor
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
+import qualified Data.Map as M
+import Debug.Trace
 
 import Types
 import AtomIndex
 import Arches
 import qualified IndexSet as IxS
 
-findUninstallablePackages :: Config -> AtomIndex -> FilePath -> Arch -> IO (IxS.Set Binary)
-findUninstallablePackages config ai dir arch = do
+findUninstallablePackages :: Config -> AtomIndex -> SuiteInfo -> FilePath -> Arch -> IO (IxS.Set Binary)
+findUninstallablePackages config ai suite dir arch = do
     let file = dir </> "Packages_" ++ show arch
     -- edos-debcheck does not like empty files
     str <- readFile file
@@ -33,7 +35,13 @@ findUninstallablePackages config ai dir arch = do
             map (\bin -> 
                 case ai `indexBin` bin of
                     Just binI -> binI
-                    Nothing -> error $ show bin ++ " not found in AtomIndex"
+                    Nothing -> 
+                        -- Work around http://bugs.debian.org/665248
+                        case M.lookup (binName bin, arch) (binaryNames suite) of
+                            Nothing -> error $ show bin ++ " not found in AtomIndex or suite"
+                            Just (binI':_) ->
+                                --trace ("edos-debcheck returned " ++ show bin ++ ", using " ++ show (ai `lookupBin` binI')) $
+                                binI'
                 ) $
             map (\(name,arch,version) ->
                 Binary (BinName (BS.pack name))
