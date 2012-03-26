@@ -19,10 +19,13 @@ fromList l = Array $ runST $ do
     PA.unsafeFreezeByteArray ba
 
 singleton :: Int32 -> Array
-singleton x = fromList [x]
+singleton x = Array $ runST $ do
+    ba <- PA.newByteArray (I# (sizeOf# (undefined :: Int32)))
+    PA.writeByteArray ba 0 x
+    PA.unsafeFreezeByteArray ba
 
 toList :: Array -> [Int32]
-toList (Array v) = map (PA.indexByteArray v) [0..len-1]
+toList (Array v) = [PA.indexByteArray v i | i <- [0..len-1]]
   where len = PA.sizeofByteArray v `div` I# (sizeOf# (undefined :: Int32))
 
 any :: (Int32 -> Bool) -> Array -> Bool
@@ -41,7 +44,8 @@ filter p v | ZArray.all p v = v
            | otherwise = fromList (Prelude.filter p (toList v))
 
 sort :: Array -> Array
-sort v = fromList (Data.List.sort (toList v))
+sort v@(Array a) = if len <= 1 then v else fromList (Data.List.sort (toList v))
+  where len = PA.sizeofByteArray a `div` I# (sizeOf# (undefined :: Int32))
 
 instance Eq Array where
     v1 == v2 = toList v1 == toList v2
