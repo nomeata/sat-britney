@@ -263,16 +263,16 @@ runPicosatPMINMAX desired sp = do
                     error $ "The MAX-SAT solver found the problem to be unsatisfiable, " ++
                             "yet the SAT solver found a problem. Possible bug in the solvers?"
         Just maxSol -> do
-            let maxSol' = applyMaskMB (knownAtoms ssp) maxSol
-            Right . (maxSol',) <$> step 0 (filter (`IS.member` desiredS) maxSol')
+            Right . (maxSol,) <$> step 0 (filter (`IS.member` desiredS) maxSol)
   where sret@(~(Just ssp)) = simplifyCNF sp
         desiredS    = IS.fromList desired
-        step 5 _   = return []
+        step 5 todo = do
+            hPutStrLn stderr $ show (length todo) ++ " clauses left, but stopping here nevertheless..."
+            return []
         step n []   = return []
         step n todo = do
             hPutStrLn stderr $ show (length todo) ++ " clauses left while finding next small solution..."
-            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable")
-                              (applyMaskMB (knownAtoms ssp)) <$>
+            aMinSol <- either (\_ -> error "Solvable problem turned unsolveable") id <$>
                 runPicosatPMAX (map negate desired) (sp { required = atoms2Conj todo `V.cons` required sp })
             let aMinSolS = IS.fromList aMinSol
                 todo' = filter (`IS.notMember` aMinSolS) todo
@@ -398,7 +398,9 @@ simplifyCNF' (hard,maxVar) (soft,_)  = go [emptyMask] (hard,maxVar) (soft,maxVar
 simplifyCNF :: SATProb -> Maybe SATProb
 simplifyCNF (SATProb {..}) = 
     let finalMask = runSTUArray $ do
-            mask <- newArray (-maxAtom,maxAtom) False
+            mask <- case knownAtoms of
+                Just originalMask -> thaw originalMask
+                Nothing -> newArray (-maxAtom,maxAtom) False
             fix $ \repeat -> do
                 currentMask <- freeze mask
                 let knownFalse i = unsafeAt' currentMask (fromIntegral (-i))
@@ -418,12 +420,12 @@ simplifyCNF (SATProb {..}) =
             return mask
         knownFalse i = unsafeAt' finalMask (fromIntegral (-i))
         knownTrue i = unsafeAt' finalMask (fromIntegral i)
-        surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
+        surelyTrueConjs =
             Z.any knownTrue
-        required' = {-# SCC "required'" #-}
+        required' =
             V.map (Z.filter (not . knownFalse)) .
             V.filter (not . surelyTrueConjs) $ required 
-        desired' = {-# SCC "desired'" #-}
+        desired' = 
             V.filter (not . Z.null) .
             V.map (Z.filter (not . knownFalse)) .
             V.filter (not . surelyTrueConjs) $ desired 
