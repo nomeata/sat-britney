@@ -27,6 +27,7 @@ singleton x = Array $ runST $ do
 toList :: Array -> [Int32]
 toList (Array v) = [PA.indexByteArray v i | i <- [0..len-1]]
   where len = PA.sizeofByteArray v `div` I# (sizeOf# (undefined :: Int32))
+{-# INLINE toList #-}
 
 any :: (Int32 -> Bool) -> Array -> Bool
 any p (Array v) = Prelude.any (\i -> p (PA.indexByteArray v i)) [0..len-1]
