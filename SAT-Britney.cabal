@@ -33,6 +33,7 @@ Executable SAT-Britney
         , safe
         , HaXml
 
+        , primitive
         , unix
         , datetime
         , bytestring-nums

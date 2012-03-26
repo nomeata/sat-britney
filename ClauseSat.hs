@@ -16,6 +16,7 @@ import Indices
 import GHC.Exts ( augment, build ) 
 import qualified Data.Vector as V
 import Control.Seq
+import qualified ZArray as Z
 
 import Data.Vector.Unboxed (modify)
 import qualified Data.Vector.Algorithms.Intro as Intro
@@ -66,7 +67,7 @@ clause2CNF c@(Not a _) = toProducer
 -- TODO clauses are unsorted ATM
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
 cnf2Clauses clauses conj = toProducer $ filter check $ build clauses
-  where check c = any (`S.member` conjS) $ map (modify Intro.sort) $ build (clause2CNF c)
+  where check c = any (`S.member` conjS) $ map Z.sort $ build (clause2CNF c)
         conjS = S.fromList $ V.toList conj
 
 runClauseSAT :: AtomI -> Producer AtomI -> Producer AtomI -> SATProb -> IO (Either CNF (S.Set AtomI))

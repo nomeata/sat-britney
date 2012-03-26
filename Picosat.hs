@@ -45,6 +45,7 @@ import Data.Array.ST
 import qualified Data.Array.MArray as MArray
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as U
+import qualified ZArray as Z
 
 import qualified Data.IntSet as IS
 import qualified Data.Set as S
@@ -52,7 +53,7 @@ import qualified Data.Set as S
 -- Remember largest variable
 type CNF = V.Vector Conj
 -- Conj is guaranteed to be ordered by absolute value
-type Conj = U.Vector Int32
+type Conj = Z.Array
 
 -- Known to have rage (-maxVar,maxVar)
 type AssignmentMask = UArray Int Bool
@@ -69,10 +70,10 @@ combineCNF conj1 conj2 = conj1 V.++ conj2
 {-# INLINE combineCNF #-}
 
 atoms2Conj :: [Int] -> Conj
-atoms2Conj = U.fromList . map fromIntegral
+atoms2Conj = Z.fromList . map fromIntegral
 
 conj2Line :: Conj -> BS.ByteString
-conj2Line ls = BS.pack $ unwords (map show (U.toList ls)) ++ " 0\n"
+conj2Line ls = BS.pack $ unwords (map show (Z.toList ls)) ++ " 0\n"
 
 conjs2SATProb :: Int -> V.Vector Conj -> SATProb
 conjs2SATProb m conjs = m `seq` SATProb m conjs V.empty Nothing
@@ -82,7 +83,7 @@ conjs2PMAXSATProb m required desired = m `seq` SATProb m required desired Nothin
 
 atom2Conj :: Int -> Conj
 {-# INLINE atom2Conj #-}
-atom2Conj i = U.singleton (fromIntegral i)
+atom2Conj i = Z.singleton (fromIntegral i)
 
 atom2Conj' = atom2Conj invalidExtra
 
@@ -283,7 +284,7 @@ partitionSatClauses :: Int -> CNF -> [Int] -> (CNF,CNF)
 partitionSatClauses maxVar conjs vars =  V.unstablePartition check conjs
   where --array = listBitArray (1,maxVar) $ map (>0) vars
         array = array' (1,maxVar) [ (i, True) | i <- vars, i > 0]
-        check = U.any (\i -> (i > 0) == unsafeAt' array (abs (fromIntegral i)))
+        check = Z.any (\i -> (i > 0) == unsafeAt' array (abs (fromIntegral i)))
 
 
 runPMAXSolver :: SATProb -> IO (Maybe [Int])
@@ -404,7 +405,7 @@ simplifyCNF (SATProb {..}) =
                     knownTrue i = unsafeAt' currentMask (fromIntegral i)
                     newSingletons = 
                         mapMaybe (\c ->
-                            case filter (not . knownFalse) $ U.toList c of
+                            case filter (not . knownFalse) $ Z.toList c of
                                 [x] | not (knownTrue x) -> Just x
                                 _   -> Nothing
                         ) $
@@ -418,13 +419,13 @@ simplifyCNF (SATProb {..}) =
         knownFalse i = unsafeAt' finalMask (fromIntegral (-i))
         knownTrue i = unsafeAt' finalMask (fromIntegral i)
         surelyTrueConjs = {-# SCC "surelyTrueConjs" #-}
-            U.any knownTrue
+            Z.any knownTrue
         required' = {-# SCC "required'" #-}
-            V.map (U.filter (not . knownFalse)) .
+            V.map (Z.filter (not . knownFalse)) .
             V.filter (not . surelyTrueConjs) $ required 
         desired' = {-# SCC "desired'" #-}
-            V.filter (not . U.null) .
-            V.map (U.filter (not . knownFalse)) .
+            V.filter (not . Z.null) .
+            V.map (Z.filter (not . knownFalse)) .
             V.filter (not . surelyTrueConjs) $ desired 
     in  if isValidMask finalMask
         then Just (SATProb maxAtom required' desired' (Just finalMask))
