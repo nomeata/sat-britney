@@ -67,13 +67,10 @@ viewed at http://git.nomeata.de/?p=sat-britney.git
 Deficiencies, Bugs and TODOs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
- * The dependencies of arch:all packages are only checked on i386, just as with
-   britney itself. But then SAT-Britney assumes it is installable on all other
-   architectures as well, which is not exactly what we want.
-   A possible solution would treat an arch:all package as separate packages on
-   each arch.
  * It might be interesting to run edost-distchek before and after our runs, to
    find identify wrongly migrated packages.
+ * It might be more efficient to re-parse the Packages file and generate and
+   resolve dependencies only per arch.
 
 
 Failing test suite tests
