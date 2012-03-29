@@ -43,6 +43,7 @@ import Heidi
 import ParseHints
 import Indices
 import AtomIndex
+import Stats
 
 minAgeTable = M.fromList [
     (Urgency "low", Age 10), 
@@ -154,7 +155,9 @@ main = do
     case getOpt Permute opts args of
         (o,[],[] ) -> do
             config <- foldM (flip id) defaultConfig o
-            runBritney config 
+            if showStats config
+            then printStats config
+            else runBritney config 
         (_,_,errs) -> do
             hPutStr stderr $ unlines errs
             usage 
@@ -224,7 +227,7 @@ runBritney config = do
 
     let unmod = IxS.generalize maxTransition `IxS.intersection` binaries testing
     let piOutM = AM.build (arches config) $ \arch ->
-            resolvePackageInfo config ai nonCandidateSet unmod arch [testing, unstable] [testingRPI, unstableRPI]
+            resolvePackageInfo config False ai nonCandidateSet unmod arch [testing, unstable] [testingRPI, unstableRPI]
     let piM = AM.map fst piOutM
     let ps = mergePackageStats $ map snd (AM.elems piOutM)
     let aiD = foldr (generateInstallabilityAtoms config) ai (AM.elems piM)

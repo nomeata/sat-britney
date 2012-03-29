@@ -30,8 +30,8 @@ import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
-resolvePackageInfo :: Config -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> [RawPackageInfo] -> (PackageInfo, PackageStats)
-resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = (PackageInfo{..}, PackageStats {..})
+resolvePackageInfo :: Config -> Bool -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> [RawPackageInfo] -> (PackageInfo, PackageStats)
+resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod piArch sis rawPackageInfos = (PackageInfo{..}, PackageStats {..})
   where buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
         -- All binaries from this arch and arch all
@@ -157,14 +157,13 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = (P
             flip IxM.mapWithKey relevantConflicts $ \p relConfs ->
                 let deps = dependsRelWithConflictsHull IxM.! p
                     revDependsRel' = restrictRel revDependsRel deps
-                in IxS.unions [ hull
+                in if onlyEasyPackages then deps else IxS.unions [ hull
                     | (c1,c2) <- S.toList relConfs
                     , c1 < c2
                     , let hull =
                             (IxM.findWithDefault IxS.empty c1 revDependsHull `IxS.intersection` deps) `IxS.union`
                             (IxM.findWithDefault IxS.empty c2 revDependsHull `IxS.intersection` deps)
-                    -- , traceShow (pp ai p, pp ai c1, pp ai c2) True
-                    -- , traceShow (map (pp ai) $ IxS.toList hull) True
+                    -- Little assertion:
                     , if p `IxS.member` hull then True else error "p not in depsHull"
                     ]
 
@@ -235,11 +234,13 @@ resolvePackageInfo config ai nonCandidates unmod piArch sis rawPackageInfos = (P
                 checkArchReq (ST.Just (ArchExcept arches)) = piArch `notElem` arches
 
 mergePackageStats :: [PackageStats] -> PackageStats
-mergePackageStats pss = PackageStats conflictHistogram' relevantDepHistogram' hasConflict' hasConflictInDeps'
+mergePackageStats pss = PackageStats conflictHistogram' relevantDepHistogram' hasConflict' hasConflictInDeps' conflictsRel' dependsRel'
   where conflictHistogram' = M.unionsWith (+) $ map conflictHistogram pss
         relevantDepHistogram' = M.unionsWith (+) $ map relevantDepHistogram pss
         hasConflict' = IxS.unions $ map hasConflict pss
         hasConflictInDeps' = IxS.unions $ map hasConflictInDeps pss
+        conflictsRel' = IxM.unionsWith IxS.union $ map conflictsRel pss
+        dependsRel' = IxM.unionsWith IxS.union $ map dependsRel pss
 
 histogramToList :: Int -> M.Map a Int -> [(a,Int)]
 histogramToList n = take n . reverse . sortBy (comparing snd) . M.toList

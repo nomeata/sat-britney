@@ -195,7 +195,9 @@ data PackageStats = PackageStats {
     conflictHistogram :: M.Map (BinI,BinI) Int,
     relevantDepHistogram :: M.Map BinI Int,
     hasConflict :: IxS.Set Binary,
-    hasConflictInDeps :: IxS.Set Binary
+    hasConflictInDeps :: IxS.Set Binary,
+    conflictsRel :: IxM.Map Binary (IxS.Set Binary),
+    dependsRel :: IxM.Map Binary (IxS.Set Binary)
 }
     deriving (Show)
 
@@ -206,8 +208,6 @@ data PackageInfo = PackageInfo {
     dependsBadHull :: IxM.Map Binary (IxS.Pred Binary),
     conflicts :: IxM.Map Binary [([BinI], ByteString)],
     affected :: IxS.Set Binary
-    -- conflictsRel :: IxM.Map Binary (IxS.Set Binary),
-    -- dependsRel :: IxM.Map Binary (IxS.Set Binary),
     -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
     }
     deriving (Show)
