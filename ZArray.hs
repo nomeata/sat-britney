@@ -13,7 +13,7 @@ newtype Array = Array PA.ByteArray
 
 fromList :: [Int32] -> Array
 fromList l = Array $ runST $ do
-    ba <- PA.newByteArray (length l * I# (sizeOf# (undefined :: Int32)))
+    ba <- PA.newByteArray (Prelude.length l * I# (sizeOf# (undefined :: Int32)))
     forM_ (zip [0..] l) $ \(i,v) -> do
         PA.writeByteArray ba i v
     PA.unsafeFreezeByteArray ba
@@ -29,6 +29,10 @@ toList (Array v) = [PA.indexByteArray v i | i <- [0..len-1]]
   where len = PA.sizeofByteArray v `div` I# (sizeOf# (undefined :: Int32))
 {-# INLINE toList #-}
 
+unsafeIndex :: Int -> Array -> Int32
+unsafeIndex i (Array v) = PA.indexByteArray v i
+{-# INLINE unsafeIndex #-}
+
 any :: (Int32 -> Bool) -> Array -> Bool
 any p (Array v) = Prelude.any (\i -> p (PA.indexByteArray v i)) [0..len-1]
   where len = PA.sizeofByteArray v `div` I# (sizeOf# (undefined :: Int32))
@@ -39,6 +43,9 @@ all p (Array v) = Prelude.all (\i -> p (PA.indexByteArray v i)) [0..len-1]
 
 null :: Array -> Bool
 null (Array v) = PA.sizeofByteArray v == 0
+
+length :: Array -> Int
+length (Array v) = PA.sizeofByteArray v `div` I# (sizeOf# (undefined :: Int32))
 
 filter :: (Int32 -> Bool) -> Array -> Array
 filter p v | ZArray.all p v = v
@@ -52,3 +59,5 @@ instance Eq Array where
     v1 == v2 = toList v1 == toList v2
 instance Ord Array where
     v1 `compare` v2 = toList v1 `compare` toList v2
+instance Show Array where
+    show v = "ZArray.fromList " ++ show v

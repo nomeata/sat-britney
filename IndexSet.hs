@@ -10,6 +10,7 @@ import qualified Data.Vector.Unboxed as U
 import Data.Int
 
 import qualified Data.IntSet as S
+import qualified ZArray as Z
 import Indices
 
 import Prelude hiding ( foldr )
@@ -44,7 +45,7 @@ instance IndexPred Set where
 
 {-# RULES "IndexSet/toList" forall is . toList is = build (\c n -> foldr c n is) #-}
 
-newtype Pred a = IndexPred { unIndexPred :: U.Vector Int32 }  
+newtype Pred a = IndexPred { unIndexPred :: Z.Array }  
   deriving (Show)
 
 instance IndexPred Pred where
@@ -52,29 +53,25 @@ instance IndexPred Pred where
     {-# INLINE member #-}
     x `notMember` s = not $ x `member` s
     {-# INLINE notMember #-}
-    toList (IndexPred s) = map (Index . fromIntegral) $ U.toList s
+    toList (IndexPred s) = map (Index . fromIntegral) $ Z.toList s
     {-# INLINE toList #-}
-    size (IndexPred s) = U.length s
+    size (IndexPred s) = Z.length s
     {-# INLINE size #-}
-    null (IndexPred s) = U.null s
+    null (IndexPred s) = Z.null s
     {-# INLINE null #-}
 
 
-binSearch :: Int32 -> U.Vector Int32 -> Bool
-binSearch b v = go v
-  where go v = case U.length v of
-            0 -> False
-            n -> let half = n `div` 2
-                     left = U.unsafeTake half v
-                     right = U.unsafeDrop (half+1) v
-                     mid = U.unsafeIndex v half
-                 in case b `compare` mid of
-                  LT -> binSearch b left
-                  EQ -> True
-                  GT -> binSearch b right
+binSearch :: Int32 -> Z.Array -> Bool
+binSearch b v = go 0 (Z.length v - 1)
+  where go l u = if l > u then False else
+            let m = (l + u) `div` 2
+            in  case b `compare` Z.unsafeIndex m v of
+                LT -> go l (m-1)
+                EQ -> True
+                GT -> go (m +1) u
 
 seal :: Set a -> Pred a
-seal (IndexSet s) = IndexPred $ U.fromList $ map fromIntegral $ S.toList s
+seal (IndexSet s) = IndexPred $ Z.fromList $ map fromIntegral $ S.toList s
 
 empty :: Set a
 empty = IndexSet S.empty
