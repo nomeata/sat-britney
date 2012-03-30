@@ -87,6 +87,9 @@ filterWithKey f (IndexMap m) = IndexMap $ M.filterWithKey (\k v -> f (Index k) v
 insertWith :: (b -> b -> b) -> Index t -> b -> Map t b -> Map a b
 insertWith f (Index k) v (IndexMap m) = IndexMap $ M.insertWith f k v m
 
+insert :: Index t -> b -> Map t b -> Map a b
+insert (Index k) v (IndexMap m) = IndexMap $ M.insert k v m
+
 filter :: (b -> Bool) -> Map t b -> Map a b
 filter f (IndexMap m) = IndexMap $ M.filter f m
 
