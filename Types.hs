@@ -201,6 +201,10 @@ data PackageStats = PackageStats {
 }
     deriving (Show)
 
+instance NFData PackageStats where
+    rnf (PackageStats a b c d e f) =
+        rnf a `deepseq` rnf b `deepseq` rnf c `deepseq` rnf d `deepseq` rnf e `deepseq` rnf f `deepseq` ()
+
 data PackageInfo = PackageInfo {
     piArch :: Arch,
     relevantBins :: IxS.Set Binary, -- relevant for this arch
@@ -211,6 +215,10 @@ data PackageInfo = PackageInfo {
     -- dependsHull :: IxM.Map Binary (IxS.Set Binary),
     }
     deriving (Show)
+
+instance NFData PackageInfo where
+    rnf (PackageInfo a b c d e f) =
+        rnf a `deepseq` rnf b `deepseq` rnf c `deepseq` rnf d `deepseq` rnf e `deepseq` rnf f `deepseq` ()
 
 data GeneralInfo = GeneralInfo {
     urgencies :: Map SrcI Urgency,
