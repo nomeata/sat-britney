@@ -36,7 +36,7 @@ instance IndexPred Set where
     {-# INLINE member #-}
     Index x `notMember` IndexSet s = x `S.notMember` s
     {-# INLINE notMember #-}
-    toList (IndexSet s) = map Index $ S.toList s
+    toList (IndexSet s) = unsafeCoerce $ S.toList s
     {-# INLINE toList #-}
     size (IndexSet s) = S.size s
     {-# INLINE size #-}
