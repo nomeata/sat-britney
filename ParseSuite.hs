@@ -35,6 +35,7 @@ import AtomIndex
 import Indices
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
+import qualified ArchMap as AM
 
 myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
@@ -44,32 +45,38 @@ para2Binary :: Para -> Binary
 para2Binary (Para {..}) = Binary (BinName packageField) (DebianVersion versionField) arch
   where arch = if architectureField == "all" then ST.Nothing else ST.Just (archFromByteString architectureField)
 
-parsePackageProvides :: Config -> AtomIndex -> Arch -> IO (Map BinName [BinI], Map BinName [BinI])
-parsePackageProvides config ai arch = do
-    testing <- parseControlFile $ dir config </> "testing" </> "Packages_" ++ show arch
-    unstable <- parseControlFile $ dir config </> "unstable" </> "Packages_" ++ show arch
+parsePackageProvides :: Config -> AtomIndex -> Arch -> (BS.ByteString, BS.ByteString) -> IO (Map BinName [BinI], Map BinName [BinI])
+parsePackageProvides config ai arch (u, t) = do
+    let testing = parseControl $ t
+    let unstable = parseControl $ u
     let paras = testing ++ unstable
-    return $
-        ( M.map nub $ M.fromListWith (++) [ (binName bin, [binI]) |
-            para <- paras,
-            let bin = para2Binary para,
-            let binI = fromJust $ ai `indexBin` bin,
-            binI `seq` True
-            ]
-        , M.map nub $ M.fromListWith (++) [ (BinName provideBS, [binI]) |
-            para <- paras,
-            let bin = para2Binary para,
-            let binI = fromJust $ ai `indexBin` bin,
-            provide <- either (error.show) id . parseProvides $ providesField para,
-            let provideBS = BS.pack provide,
-            provideBS `seq` True
-            ]
+
+    let ( binaryNamesList
+         ,providesList
+         ) = readPara paras
+        readPara [] = ([], [])
+        readPara (para:ps) =
+                    ( binNamesEntry : binNames
+                    , providesEntries ++ provides
+                    )
+          where (binNames, provides) = readPara ps
+                bin = para2Binary para
+                binI = fromJust $ ai `indexBin` bin
+                binNamesEntry = (binName bin, [binI])
+                providesEntries = [ (BinName provideBS, [binI]) |
+                    provide <- either (error.show) id . parseProvides $ providesField para,
+                    let provideBS = BS.pack provide,
+                    provideBS `seq` True
+                    ]
+    return $!!
+        ( M.fromListWith (++) binaryNamesList
+        , M.fromListWith (++) providesList
         )
 
-parsePackageDependencies :: Config -> AtomIndex -> Arch -> IO [(BinI, Dependency, Dependency)]
-parsePackageDependencies config ai arch = do
-    testing <- parseControlFile $ dir config </> "testing" </> "Packages_" ++ show arch
-    unstable <- parseControlFile $ dir config </> "unstable" </> "Packages_" ++ show arch
+parsePackageDependencies :: Config -> AtomIndex -> Arch -> (BS.ByteString, BS.ByteString) -> IO [(BinI, Dependency, Dependency)]
+parsePackageDependencies config ai arch (u,t) = do
+    let unstable = parseControl u
+    let testing = parseControl t
     let paras = testing ++ unstable
     return $ [ (binI, depends ++ preDepends, conflicts ++ breaks) |
         para@Para {..} <- paras,
@@ -81,8 +88,15 @@ parsePackageDependencies config ai arch = do
         let breaks = parseDependency $ breaksField
         ]
 
-parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, AtomIndex)
-parseSuite config ai dir = do
+readPackagesFiles :: Config -> IO PackagesFiles
+readPackagesFiles config = do
+    AM.buildM (arches config) $ \arch -> do
+        u <- BS.readFile $ dir config </> "unstable" </> "Packages_" ++ show arch
+        t <- BS.readFile $ dir config </> "testing" </> "Packages_" ++ show arch
+        return (u,t)
+        
+parseSuite :: Config -> AtomIndex -> FilePath -> AM.Map BS.ByteString -> IO (SuiteInfo, AtomIndex)
+parseSuite config ai dir pf = do
     {-
     sources <- myParseControl (dir </>"Sources")
 
@@ -93,8 +107,7 @@ parseSuite config ai dir = do
             let Just version = fieldValue "Version" para ]
     -}
 
-    binaries <- concat <$>
-        mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
+    let binaries = concatMap parseControl  (AM.elems pf) 
 
     let ( binaryAtoms
          ,binaryNamesList

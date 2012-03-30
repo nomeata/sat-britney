@@ -30,7 +30,10 @@ emptyPara :: Para
 emptyPara = Para BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty
 
 parseControlFile :: FilePath -> IO [Para]
-parseControlFile filename = parseLines . BS.lines <$> BS.readFile filename
+parseControlFile filename = parseControl <$> BS.readFile filename
+
+parseControl :: BS.ByteString -> [Para]
+parseControl = parseLines . BS.lines
 
 parseLines :: [BS.ByteString] -> [Para]
 parseLines = go emptyPara

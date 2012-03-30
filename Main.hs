@@ -164,8 +164,9 @@ main = do
 
 runBritney config = do
     let ai1 = emptyIndex
-    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable")
-    (testing, ai)  <- parseSuite config ai2 (dir config </> "testing")
+    pf <- readPackagesFiles config
+    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable") (AM.map fst pf)
+    (testing, ai)  <- parseSuite config ai2 (dir config </> "testing") (AM.map snd pf)
     let builtBy = IxM.union (builtByR unstable) (builtByR testing)
 
     hPutStrLn stderr $ "Figuring out what packages are not installable in testing:"
@@ -228,7 +229,7 @@ runBritney config = do
 
     let unmod = IxS.generalize maxTransition `IxS.intersection` binaries testing
     piOutM <- AM.buildM (arches config) $ \arch ->
-            resolvePackageInfo config False ai nonCandidateSet unmod arch [testing, unstable] 
+            resolvePackageInfo config False ai nonCandidateSet unmod arch [testing, unstable] pf
     let piM = AM.map fst piOutM
     let ps = mergePackageStats $ map snd (AM.elems piOutM)
     let aiD = foldr (generateInstallabilityAtoms config) ai (AM.elems piM)

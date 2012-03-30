@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, Rank2Types, ImpredicativeTypes, TupleSections #-}
+{-# LANGUAGE RecordWildCards, Rank2Types, ImpredicativeTypes, TupleSections, BangPatterns #-}
 -- |
 -- Module: DepRules
 -- Copyright: (c) 2011 Joachim Breitner
@@ -12,6 +12,7 @@ import Data.Ord
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Functor
 import Control.Arrow (first)
 import Control.DeepSeq
@@ -24,20 +25,20 @@ import Types
 import Arches
 import AtomIndex
 import LitSat
-import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
+import qualified ArchMap as AM
 
-resolvePackageInfo :: Config -> Bool -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> IO (PackageInfo, PackageStats)
-resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod arch sis  = do
-    (binaryNames, provides) <- parsePackageProvides config ai arch
-    rawDepends <- parsePackageDependencies config ai arch
+resolvePackageInfo :: Config -> Bool -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> PackagesFiles -> IO (PackageInfo, PackageStats)
+resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod arch sis pf = do
+    (binaryNames, provides) <- parsePackageProvides config ai arch (pf AM.! arch)
+    rawDepends <- parsePackageDependencies config ai arch (pf AM.! arch)
     let (depends, conflicts) = flattenRelations ai nonCandidates arch sis binaryNames provides rawDepends
     return $!! resolvePackageInfo' config onlyEasyPackages ai nonCandidates unmod arch sis depends conflicts
 
 flattenRelations :: AtomIndex -> IxS.Set Source -> Arch -> [SuiteInfo] -> M.Map BinName [BinI] -> M.Map BinName [BinI] -> [(BinI, Dependency, Dependency)] -> (IxM.Map Binary [([BinI], BS.ByteString)], IxM.Map Binary [([BinI], BS.ByteString)])
 flattenRelations ai nonCandidates arch sis binaryNames provides = foldl' go (IxM.empty, IxM.empty) 
-  where go (depM, confM) (binI, deps, confs)
+  where go (!depM, !confM) (binI, deps, confs)
             | binI `IxS.member` nonCandidateBins = (depM, confM)
             | binI `IxM.member` depM = (depM, confM)
             | binI `IxM.member` confM = error "Entry in depM but not in confM"

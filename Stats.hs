@@ -16,20 +16,23 @@ sumArch :: AM.Map a -> (a -> Int) -> Int
 sumArch m f = sum [ f v | v <- AM.elems m ]
 
 printStats config = do
+    pf <- readPackagesFiles config
     let ai1 = emptyIndex
-    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable")
-    (testing, ai) <- parseSuite config ai2 (dir config </> "testing")
-    piM <- AM.buildM (arches config) $ \arch ->
-            resolvePackageInfo config False ai IxS.empty IxS.empty arch [testing, unstable] 
+    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable") (AM.map fst pf)
+    (testing, ai)  <- parseSuite config ai2 (dir config </> "testing") (AM.map snd pf)
 
     let bin = IxS.size $ binaries unstable `IxS.union` binaries testing
     printf "Binary packages: %13d\n" bin
+
+    piM <- AM.buildM (arches config) $ \arch ->
+            resolvePackageInfo config False ai IxS.empty IxS.empty arch [testing, unstable] pf
     let confs = sumArch piM $
             sum . map IxS.size . IxM.elems . conflictsRel . snd
     printf "Conflicts: %13d\n" confs
     let deps = sumArch piM $
             sum . map length . IxM.elems . depends . fst
     printf "Dependencies: %13d\n" deps
+
     printf "Paper-Numbers 1: %13d atoms, %13d clauses in P_t^1\n" bin deps
     printf "Paper-Numbers 2: %13d atoms, %13d clauses in P_t^2\n" (bin + bin*bin) (deps*bin)
     let instAtoms3 = sumArch piM $
@@ -39,7 +42,7 @@ printStats config = do
     printf "Paper-Numbers 3: %13d atoms, %13d clauses in P_t^3\n" (bin + instAtoms3) deps3
 
     piM4 <- AM.buildM (arches config) $ \arch ->
-            resolvePackageInfo config True ai IxS.empty IxS.empty arch [testing, unstable]
+            resolvePackageInfo config True ai IxS.empty IxS.empty arch [testing, unstable] pf
     let instAtoms4 = sumArch piM4 $
             sum . map IxS.size . IxM.elems . dependsBadHull . fst
     let deps4 = sumArch piM4 $ \(pi,ps) -> 

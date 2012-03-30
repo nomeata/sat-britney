@@ -23,6 +23,7 @@ import Indices
 import Arches
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
+import qualified ArchMap as AM
 
 type Set = S.Set
 type Map = M.Map
@@ -158,6 +159,8 @@ type AtomI = Index Atom
 
 genIndex :: Index a -> Index Atom
 genIndex (Index i) = Index i
+
+type PackagesFiles = AM.Map (BS.ByteString, BS.ByteString)
 
 -- | Data specific to one suite
 --
