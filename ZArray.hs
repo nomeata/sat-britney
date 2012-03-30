@@ -7,9 +7,12 @@ import Control.Monad
 import Control.Monad.ST
 import Data.Int
 import Data.List
+import Control.DeepSeq
 import GHC.Exts
 
 newtype Array = Array PA.ByteArray
+
+instance NFData Array
 
 fromList :: [Int32] -> Array
 fromList l = Array $ runST $ do
@@ -60,4 +63,4 @@ instance Eq Array where
 instance Ord Array where
     v1 `compare` v2 = toList v1 `compare` toList v2
 instance Show Array where
-    show v = "ZArray.fromList " ++ show v
+    show v = "ZArray.fromList " ++ show (toList v)
