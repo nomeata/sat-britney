@@ -46,7 +46,7 @@ instance IndexPred Set where
 {-# RULES "IndexSet/toList" forall is . toList is = build (\c n -> foldr c n is) #-}
 
 newtype Pred a = IndexPred { unIndexPred :: Z.Array }  
-  deriving (Show)
+  deriving (Show, NFData)
 
 instance IndexPred Pred where
     Index x `member` IndexPred s = binSearch (fromIntegral x) s 
