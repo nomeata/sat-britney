@@ -227,8 +227,8 @@ runBritney config = do
     -- From here on, we look at dependencies
 
     let unmod = IxS.generalize maxTransition `IxS.intersection` binaries testing
-    let piOutM = AM.build (arches config) $ \arch ->
-            resolvePackageInfo config False ai nonCandidateSet unmod arch [testing, unstable] [testingRPI, unstableRPI]
+    piOutM <- AM.buildM (arches config) $ \arch ->
+            resolvePackageInfo config False ai nonCandidateSet unmod arch [testing, unstable] 
     let piM = AM.map fst piOutM
     let ps = mergePackageStats $ map snd (AM.elems piOutM)
     let aiD = foldr (generateInstallabilityAtoms config) ai (AM.elems piM)

@@ -14,6 +14,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Text.Parsec
 import Text.Parsec.ByteString
+import Data.Maybe
 import Data.List
 import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Nums.Careless
@@ -38,6 +39,47 @@ import qualified IndexSet as IxS
 myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
     parseControlFile file
+
+para2Binary :: Para -> Binary
+para2Binary (Para {..}) = Binary (BinName packageField) (DebianVersion versionField) arch
+  where arch = if architectureField == "all" then ST.Nothing else ST.Just (archFromByteString architectureField)
+
+parsePackageProvides :: Config -> AtomIndex -> Arch -> IO (Map BinName [BinI], Map BinName [BinI])
+parsePackageProvides config ai arch = do
+    testing <- parseControlFile $ dir config </> "testing" </> "Packages_" ++ show arch
+    unstable <- parseControlFile $ dir config </> "unstable" </> "Packages_" ++ show arch
+    let paras = testing ++ unstable
+    return $
+        ( M.map nub $ M.fromListWith (++) [ (binName bin, [binI]) |
+            para <- paras,
+            let bin = para2Binary para,
+            let binI = fromJust $ ai `indexBin` bin,
+            binI `seq` True
+            ]
+        , M.map nub $ M.fromListWith (++) [ (BinName provideBS, [binI]) |
+            para <- paras,
+            let bin = para2Binary para,
+            let binI = fromJust $ ai `indexBin` bin,
+            provide <- either (error.show) id . parseProvides $ providesField para,
+            let provideBS = BS.pack provide,
+            provideBS `seq` True
+            ]
+        )
+
+parsePackageDependencies :: Config -> AtomIndex -> Arch -> IO [(BinI, Dependency, Dependency)]
+parsePackageDependencies config ai arch = do
+    testing <- parseControlFile $ dir config </> "testing" </> "Packages_" ++ show arch
+    unstable <- parseControlFile $ dir config </> "unstable" </> "Packages_" ++ show arch
+    let paras = testing ++ unstable
+    return $ [ (binI, depends ++ preDepends, conflicts ++ breaks) |
+        para@Para {..} <- paras,
+        let bin = para2Binary para,
+        let binI = fromJust $ ai `indexBin` bin,
+        let depends = parseDependency $ dependsField,
+        let preDepends = parseDependency $ preDependsField,
+        let conflicts = parseDependency $ conflictsField,
+        let breaks = parseDependency $ breaksField
+        ]
 
 parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, RawPackageInfo, AtomIndex)
 parseSuite config ai dir = do

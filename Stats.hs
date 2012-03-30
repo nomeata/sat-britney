@@ -19,8 +19,8 @@ printStats config = do
     let ai1 = emptyIndex
     (unstable, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, testingRPI, ai)  <- parseSuite config ai2 (dir config </> "testing")
-    let piM = AM.build (arches config) $ \arch ->
-            resolvePackageInfo config False ai IxS.empty IxS.empty arch [testing, unstable] [testingRPI, unstableRPI]
+    piM <- AM.buildM (arches config) $ \arch ->
+            resolvePackageInfo config False ai IxS.empty IxS.empty arch [testing, unstable] 
 
     let bin = IxS.size $ binaries unstable `IxS.union` binaries testing
     printf "Binary packages: %13d\n" bin
@@ -38,8 +38,8 @@ printStats config = do
             sum $ map (sum . map (length . (depends pi IxM.!)) . IxS.toList) $ IxM.elems $ transitiveHull $ dependsRel ps
     printf "Paper-Numbers 3: %13d atoms, %13d clauses in P_t^3\n" (bin + instAtoms3) deps3
 
-    let piM4 = AM.build (arches config) $ \arch ->
-            resolvePackageInfo config True ai IxS.empty IxS.empty arch [testing, unstable] [testingRPI, unstableRPI]
+    piM4 <- AM.buildM (arches config) $ \arch ->
+            resolvePackageInfo config True ai IxS.empty IxS.empty arch [testing, unstable]
     let instAtoms4 = sumArch piM4 $
             sum . map IxS.size . IxM.elems . dependsBadHull . fst
     let deps4 = sumArch piM4 $ \(pi,ps) -> 

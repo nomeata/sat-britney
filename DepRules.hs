@@ -13,34 +13,80 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import qualified Data.Map as M
 import Data.Functor
-import Data.Function
-import Control.Arrow ((&&&), first)
+import Control.Arrow (first)
+import Control.DeepSeq
 import Debug.Trace
 import Safe
-import GHC.Exts (build)
 
-import ParseHints
+import ParseSuite
 import Indices
 import Types
 import Arches
 import AtomIndex
 import LitSat
-import PrettyPrint
 import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
-resolvePackageInfo :: Config -> Bool -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> [RawPackageInfo] -> (PackageInfo, PackageStats)
-resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod piArch sis rawPackageInfos = (PackageInfo{..}, PackageStats {..})
+resolvePackageInfo :: Config -> Bool -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> IO (PackageInfo, PackageStats)
+resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod arch sis  = do
+    (binaryNames, provides) <- parsePackageProvides config ai arch
+    rawDepends <- parsePackageDependencies config ai arch
+    let (depends, conflicts) = flattenRelations ai nonCandidates arch sis binaryNames provides rawDepends
+    return $!! resolvePackageInfo' config onlyEasyPackages ai nonCandidates unmod arch sis depends conflicts
+
+flattenRelations :: AtomIndex -> IxS.Set Source -> Arch -> [SuiteInfo] -> M.Map BinName [BinI] -> M.Map BinName [BinI] -> [(BinI, Dependency, Dependency)] -> (IxM.Map Binary [([BinI], BS.ByteString)], IxM.Map Binary [([BinI], BS.ByteString)])
+flattenRelations ai nonCandidates arch sis binaryNames provides = foldl' go (IxM.empty, IxM.empty) 
+  where go (depM, confM) (binI, deps, confs)
+            | binI `IxS.member` nonCandidateBins = (depM, confM)
+            | binI `IxM.member` depM = (depM, confM)
+            | binI `IxM.member` confM = error "Entry in depM but not in confM"
+            | otherwise  =
+                ( IxM.insert
+                    binI  
+                    (map (first (nub . filter (`IxS.notMember` nonCandidateBins) . concatMap resolveDep)) deps)
+                    depM
+                , let thisName = binName (ai `lookupBin` binI)
+                      thisConfls = map (first $ nub . concatMap (resolveConf thisName)) confs
+                  in if null thisConfls then confM else IxM.insert binI thisConfls confM
+                )
+
+        buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
+
+        nonCandidateBins = {-# SCC "nonCandidateBins" #-} IxS.seal $ IxS.fromList $
+            concatMap (buildsUnion IxM.!) $
+            IxS.toList nonCandidates
+
+        resolveDep  = resolve Nothing
+        resolveConf = resolve . Just 
+
+        resolve :: Maybe BinName ->  DepRel -> [BinI]
+        resolve mbPkg (DepRel name mbVerReq mbArchReq)
+            | checkArchReq mbArchReq = 
+                [ binI |
+                    binI <- M.findWithDefault [] name binaryNames,
+                    let Binary pkg version _ = ai `lookupBin` binI,
+                    maybe True (/= pkg) mbPkg, -- conflicts only with different names
+                    checkVersionReq mbVerReq (Just version)
+                ] ++ 
+                if ST.isJust mbVerReq then [] else 
+                [ binI |
+                    binI <- M.findWithDefault [] name provides,
+                    let Binary pkg _ _ = ai `lookupBin` binI,
+                    maybe True (/= pkg) mbPkg -- conflicts only with different names
+                ]
+            | otherwise = []
+          where checkArchReq ST.Nothing = True
+                checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
+                checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
+
+
+resolvePackageInfo' :: Config -> Bool -> AtomIndex -> IxS.Set Source -> IxS.Set Binary -> Arch -> [SuiteInfo] -> IxM.Map Binary [([BinI], BS.ByteString)] -> IxM.Map Binary [([BinI], BS.ByteString)] -> (PackageInfo, PackageStats)
+resolvePackageInfo' config onlyEasyPackages ai nonCandidates unmod piArch sis depends conflicts = (PackageInfo{..}, PackageStats {..})
   where buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionsWith (++) $ map builds sis
 
         -- All binaries from this arch and arch all
-        binariesUnion = {-# SCC "binariesUnion" #-}
-            IxS.filter (\binI ->
-                let Binary _ _ arch = ai `lookupBin` binI
-                in  ST.maybe True (== piArch) arch ) $
-            IxS.unions $
-            map binaries sis
+        binariesUnion = IxM.keysSet depends
 
         affected = {-# SCC "affected" #-} IxS.unions . map (transitiveHull1 revDependsRel) $ IxS.toList $ binariesUnion `IxS.difference` unmod
 
@@ -61,21 +107,6 @@ resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod piArch sis raw
                     ST.maybe isArchForAll (const True) arch) $
             binariesUnion
         
-        depends = {-# SCC "depends" #-} IxM.fromList $  
-                    map (\(binI,deps) -> 
-                        (binI, map (first
-                            (
-                            filter (`IxS.notMember` nonCandidateBins) .
-                            nub .
-                            concatMap resolveDep) )
-                            deps)
-                    ) $
-                    filter (\(k,v) -> 
-                            k `IxS.member` binariesUnion && 
-                            k `IxS.notMember` nonCandidateBins
-                        ) $
-                    concatMap dependsR rawPackageInfos
-
         dependsRel = {-# SCC "dependsRel" #-} IxM.filter (not . IxS.null) $
                      IxM.map (IxS.fromList . concatMap fst) $
                      depends
@@ -168,22 +199,6 @@ resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod piArch sis raw
                     ]
 
 
-        conflicts = {-# SCC "conflicts" #-} IxM.unionWith (++)
-                    ( IxM.fromList $
-                        map (\(binI,deps) ->
-                            let Binary pkg _ _ = ai `lookupBin` binI
-                            in (binI, map (first $ nub . concatMap (resolveConf pkg)) deps)
-                        ) $
-                        concatMap conflictsR rawPackageInfos
-                    )
-                    ( IxM.fromList $
-                        map (\(binI,deps) ->
-                            let Binary pkg _ arch = ai `lookupBin` binI
-                            in (binI, map (first $ nub . concatMap (resolveConf pkg)) deps)
-                        ) $
-                        concatMap breaksR rawPackageInfos
-                    )
-
         depRelHasUpperBound (DepRel _ (ST.Just vr) _ ) = {-# SCC "depRelHasUpperBound" #-} hasUpperBound vr
         depRelHasUpperBound _ = {-# SCC "depRelHasUpperBound" #-} False
 
@@ -206,32 +221,6 @@ resolvePackageInfo config onlyEasyPackages ai nonCandidates unmod piArch sis raw
                         cid' =  cid `IxS.union` new
                     in  go (new' `IxS.difference` cid') cid'
 
-        binaryNamesUnion = {-# SCC "binaryNamesUnion" #-} M.unionsWith (++) (map binaryNamesR rawPackageInfos)
-
-        providesUnion = {-# SCC "providesUnion" #-} M.unionsWith (++) (map providesR rawPackageInfos)
-
-        resolveDep  = resolve Nothing
-        resolveConf = resolve . Just 
-
-        resolve :: Maybe BinName ->  DepRel -> [BinI]
-        resolve mbPkg (DepRel name mbVerReq mbArchReq)
-            | checkArchReq mbArchReq = 
-                [ binI |
-                    binI <- M.findWithDefault [] (name, piArch) binaryNamesUnion,
-                    let Binary pkg version _ = ai `lookupBin` binI,
-                    maybe True (/= pkg) mbPkg, -- conflicts only with different names
-                    checkVersionReq mbVerReq (Just version)
-                ] ++ 
-                if ST.isJust mbVerReq then [] else 
-                [ binI |
-                    binI <- M.findWithDefault [] (name, piArch) providesUnion,
-                    let Binary pkg _ _ = ai `lookupBin` binI,
-                    maybe True (/= pkg) mbPkg -- conflicts only with different names
-                ]
-            | otherwise = []
-          where checkArchReq ST.Nothing = True
-                checkArchReq (ST.Just (ArchOnly arches)) = piArch `elem` arches
-                checkArchReq (ST.Just (ArchExcept arches)) = piArch `notElem` arches
 
 mergePackageStats :: [PackageStats] -> PackageStats
 mergePackageStats pss = PackageStats conflictHistogram' relevantDepHistogram' hasConflict' hasConflictInDeps' conflictsRel' dependsRel'
@@ -261,11 +250,11 @@ transitiveHull1 :: IxM.Map a (IxS.Set a) -> Index a -> IxS.Set a
 transitiveHull1 rel x = addTransitiveHull1 rel x IxS.empty
 
 addTransitiveHull1 :: IxM.Map t (IxS.Set t) -> Index t -> IxS.Set t -> IxS.Set t
-addTransitiveHull1 rel x hull = go hull [x]
-  where go hull [] = hull
-        go hull (x:xs) | x `IxS.member` hull = go hull xs
-                       | otherwise = go (IxS.insert x hull) 
-                                        (maybe [] IxS.toList (IxM.lookup x rel) ++ xs)
+addTransitiveHull1 rel x = go [x]
+  where go []     hull = hull
+        go (x:xs) hull | x `IxS.member` hull = go xs hull
+                       | otherwise = go (maybe [] IxS.toList (IxM.lookup x rel) ++ xs)
+                                        (IxS.insert x hull) 
 
 transitiveHull1s :: IxM.Map t (IxS.Set t) -> [Index t] -> IxS.Set t
 transitiveHull1s rel = foldr (addTransitiveHull1 rel) IxS.empty 
@@ -303,12 +292,11 @@ reflexiveLookup x m = fromMaybe (IxS.seal $ IxS.singleton x) $ IxM.lookup x m
 
 generateInstallabilityAtoms :: Config -> PackageInfo -> AtomIndex -> AtomIndex
 generateInstallabilityAtoms config pi ai =
-    foldl' (\ai i ->  fst (ai `addInst` i)) ai $ installabilityAtoms config pi ai
+    foldl' (\ai' i ->  fst (ai' `addInst` i)) ai $ installabilityAtoms config pi ai
 
 dependencyRules :: Config -> AtomIndex -> IxS.Set Binary -> PackageInfo -> Producer (Clause AtomI)
 dependencyRules config ai uninst pi f x = (toProducer $ hardDependencies) f x 
   where hardDependencies =
-            {-# SCC "hardDependencies" #-}
             -- Dependencies
             [ Implies instI deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
                 forI <- IxS.toList (relevantBins pi),
@@ -326,7 +314,7 @@ dependencyRules config ai uninst pi f x = (toProducer $ hardDependencies) f x
                 let binIs = reflexiveLookup forI (dependsBadHull pi),
                 binI <- IxS.toList binIs,
                 let instI = genIndex . fromJustNote "X" . indexInst ai $ Inst forI binI (piArch pi),
-                (disjunction, reason) <- conflicts pi IxM.! binI,
+                (disjunction, reason) <- fromMaybe [] $ IxM.lookup binI (conflicts pi),
                 confl <- disjunction,
                 confl `IxS.member` binIs,
                 let conflI = genIndex . fromJustNote "Z" . indexInst ai $ Inst forI confl (piArch pi)
