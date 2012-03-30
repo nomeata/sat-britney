@@ -30,9 +30,6 @@ import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
 
-calculateBuiltBy :: [RawPackageInfo] -> BuiltBy
-calculateBuiltBy = IxM.unions . map builtByR
-
 -- Sources and binaries that will not be in testing, in any case. Can be used
 -- to skip certain things, most notable generating the dependency information.
 findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults

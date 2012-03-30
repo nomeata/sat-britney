@@ -171,7 +171,8 @@ data SuiteInfo = SuiteInfo {
     builds :: IxM.Map Source [BinI],
     buildsArches :: IxM.Map Source (S.Set Arch),
     newerSources :: IxM.Map Source [SrcI],
-    bugs :: IxM.Map Atom [BugI]
+    bugs :: IxM.Map Atom [BugI],
+    builtByR :: IxM.Map Binary SrcI
     }
     deriving (Show)
 
@@ -181,7 +182,6 @@ data SuiteInfo = SuiteInfo {
 -- Raw variant, e.g. before resolving dependencies and conflicts.
 data RawPackageInfo = RawPackageInfo {
     binaryNamesR :: Map (BinName, Arch) [BinI], -- Duplicate from SuiteInfo
-    builtByR :: IxM.Map Binary SrcI,
     dependsR :: [(BinI, Dependency)],
     providesR :: Map (BinName, Arch) [BinI],
     conflictsR :: [(BinI, Dependency)],

@@ -166,6 +166,8 @@ runBritney config = do
     let ai1 = emptyIndex
     (unstable, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
     (testing, testingRPI, ai)  <- parseSuite config ai2 (dir config </> "testing")
+    let builtBy = IxM.union (builtByR unstable) (builtByR testing)
+
     hPutStrLn stderr $ "Figuring out what packages are not installable in testing:"
     uninstallable <- AM.buildM (arches config) $
         findUninstallablePackages config ai testing (dir config </> "testing")
@@ -186,8 +188,7 @@ runBritney config = do
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
     let hintResults = processHints config ai unstable testing general hints
 
-    let builtBy = calculateBuiltBy [testingRPI, unstableRPI]
-        nonCandidates :: Producer (SrcI, String)
+    let nonCandidates :: Producer (SrcI, String)
         nonCandidates = findNonCandidates config ai unstable testing general builtBy hintResults
         nonCandidateSet = IxS.fromList $ map fst $ build nonCandidates
 

@@ -175,9 +175,9 @@ parseSuite config ai dir = do
             buildsArches
             newerSources
             bugs
+            builtBy
         , RawPackageInfo
             binaryNames
-            builtBy
             depends
             provides
             conflicts
