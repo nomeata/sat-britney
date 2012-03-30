@@ -178,17 +178,7 @@ data SuiteInfo = SuiteInfo {
 
 -- | Data that comes from one suite, but really ought to apply to all of them,
 -- e.g. because it is actually properties of binaries.
--- 
--- Raw variant, e.g. before resolving dependencies and conflicts.
-data RawPackageInfo = RawPackageInfo {
-    binaryNamesR :: Map (BinName, Arch) [BinI], -- Duplicate from SuiteInfo
-    dependsR :: [(BinI, Dependency)],
-    providesR :: Map (BinName, Arch) [BinI],
-    conflictsR :: [(BinI, Dependency)],
-    breaksR :: [(BinI, Dependency)]
-}
-    deriving (Show)
-    
+
 type BuiltBy = IxM.Map Binary SrcI
 
 data PackageStats = PackageStats {

@@ -81,7 +81,7 @@ parsePackageDependencies config ai arch = do
         let breaks = parseDependency $ breaksField
         ]
 
-parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, RawPackageInfo, AtomIndex)
+parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, AtomIndex)
 parseSuite config ai dir = do
     {-
     sources <- myParseControl (dir </>"Sources")
@@ -98,25 +98,17 @@ parseSuite config ai dir = do
 
     let ( binaryAtoms
          ,binaryNamesList
-         ,binaryDepends
-         ,binaryProvides
-         ,binaryConflicts
-         ,binaryBreaks
          ,builtByList
          ,archBuiltByList
          ,ai') = readPara ai binaries
-        readPara ai [] = ([], [], [], [], [], [], [], [], ai)
+        readPara ai [] = ([], [], [], [], ai)
         readPara ai (Para {..}:ps) =
                     ( binI:bins
                     , binNamesEntries ++ binNames
-                    , (binI,depends++preDepends):deps
-                    , provides ++ provs
-                    , (binI,conflicts):confls
-                    , (binI,breaks):brks
                     , (binI,srcI): bb
                     , ST.maybe id (\a -> (:) (a,srcI)) arch $ abb
                     , finalAi)
-          where (bins, binNames, deps, provs, confls, brks, bb, abb, finalAi) = readPara ai'' ps
+          where (bins, binNames, bb, abb, finalAi) = readPara ai'' ps
                 pkg = packageField
                 version = DebianVersion versionField
                 archS = architectureField
@@ -127,17 +119,6 @@ parseSuite config ai dir = do
                 binNamesEntries = [ ((BinName pkg,a),[binI]) | a <- onArches ]
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
-                depends = parseDependency $ dependsField
-                preDepends = parseDependency $ preDependsField
-                conflicts = parseDependency $ conflictsField
-                breaks = parseDependency $ breaksField
-                provides = [
-                    ((BinName (BS.pack provide), providedArch), [binI]) |
-                    provide <- either (error.show) id . parseProvides $ providesField,
-                    providedArch <- case arch of 
-                        ST.Just arch -> [arch]
-                        ST.Nothing -> arches config
-                    ]
                 (source,sourceVersion) = case BS.words sourceField of
                     []     -> (pkg, version)
                     [s,sv] | BS.head sv == '(' && BS.last sv == ')' 
@@ -151,14 +132,6 @@ parseSuite config ai dir = do
     let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) $ s [ (src,[bin]) | (bin,src) <- builtByList ]
 
     let buildsArches = {-# SCC "builds" #-}  IxM.fromListWith (S.union) $ s [ (src,S.singleton a) | (a,src) <- archBuiltByList ]
-
-    let depends = {-# SCC "depends" #-} binaryDepends
-
-    let provides = {-# SCC "provides" #-} M.fromListWith (++) $ s binaryProvides
-
-    let conflicts = {-# SCC "conflicts" #-} binaryConflicts
-
-    let breaks = {-# SCC "breaks" #-} binaryBreaks
 
     let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) $ s binaryNamesList
 
@@ -218,12 +191,6 @@ parseSuite config ai dir = do
             newerSources
             bugs
             builtBy
-        , RawPackageInfo
-            binaryNames
-            depends
-            provides
-            conflicts
-            breaks
         , ai'')
 
 parseGeneralInfo :: Config -> AtomIndex -> IO GeneralInfo

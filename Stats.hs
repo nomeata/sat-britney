@@ -17,8 +17,8 @@ sumArch m f = sum [ f v | v <- AM.elems m ]
 
 printStats config = do
     let ai1 = emptyIndex
-    (unstable, unstableRPI, ai2) <- parseSuite config ai1 (dir config </> "unstable")
-    (testing, testingRPI, ai)  <- parseSuite config ai2 (dir config </> "testing")
+    (unstable, ai2) <- parseSuite config ai1 (dir config </> "unstable")
+    (testing, ai) <- parseSuite config ai2 (dir config </> "testing")
     piM <- AM.buildM (arches config) $ \arch ->
             resolvePackageInfo config False ai IxS.empty IxS.empty arch [testing, unstable] 
 
