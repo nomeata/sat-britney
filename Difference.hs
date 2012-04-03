@@ -19,7 +19,8 @@ import AtomIndex
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
-suiteDifference ai testing unstable newAtomIs =
+suiteDifference :: AtomIndex -> SuiteInfo -> S.Set AtomI -> L.ByteString
+suiteDifference ai testing newAtomIs =
     let newAtoms = S.map (ai `lookupAtom`) newAtomIs
         (newSource, newBinaries, _) = splitAtoms newAtoms
     in L.unlines $

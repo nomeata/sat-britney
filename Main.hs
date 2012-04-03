@@ -348,20 +348,20 @@ runBritney config = do
                 hPutStrLn stderr $ show $ nest 4 $ fsep $ punctuate comma $ map (pp ai) $ IxS.toList unmodMissing
 
             mbDo (differenceH config) $ \h -> do
-                L.hPut h $ suiteDifference aiD testing unstable newAtomIs
+                L.hPut h $ suiteDifference aiD testing newAtomIs
                 hFlush h
 
             mbDo (hintsH config) $ \h -> do
                 if transSize config == ManySmall
                 then do
                     hPutStrLn h $ "# Full hint:"
-                    L.hPut h $ generateHints aiD testing unstable builtBy newAtomIs
+                    L.hPut h $ generateHints aiD testing builtBy newAtomIs
                     hPutStrLn h $ "# Small hints:"
                     forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
-                        L.hPut h $ generateHints aiD testing unstable builtBy thisTransitionNewAtomsIs
+                        L.hPut h $ generateHints aiD testing builtBy thisTransitionNewAtomsIs
                     hFlush h
                 else do
-                    L.hPut h $ generateHints aiD testing unstable builtBy newAtomIs
+                    L.hPut h $ generateHints aiD testing builtBy newAtomIs
                     hFlush h
 
             mbDo (heidiH config) $ \h -> do
