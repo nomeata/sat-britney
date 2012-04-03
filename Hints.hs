@@ -14,13 +14,15 @@ import Types
 import Arches
 import Indices
 import AtomIndex
+import Difference
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
 generateHints :: AtomIndex -> SuiteInfo -> IxM.Map Binary SrcI -> S.Set AtomI -> L.ByteString
 generateHints ai testing builtBy newAtoms = comment (format hintStrings)
   where comment hint = case length hintStrings of
-            0 -> "# empty hint\n"
+            0 -> "# empty hint when trying to express:\n" `L.append`
+                    L.unlines (map ("#   " `L.append`) (L.lines (suiteDifference ai testing newAtoms)))
             1 -> "#" `L.append` hint
             _ -> hint
         format xs = "easy " `L.append` L.unwords xs `L.append` "\n" 
