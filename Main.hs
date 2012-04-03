@@ -348,7 +348,8 @@ runBritney config = do
                 hPutStrLn stderr $ show $ nest 4 $ fsep $ punctuate comma $ map (pp ai) $ IxS.toList unmodMissing
 
             mbDo (differenceH config) $ \h -> do
-                printSuiteDifference h aiD testing unstable newAtomIs
+                L.hPut h $ suiteDifference aiD testing unstable newAtomIs
+                hFlush h
 
             mbDo (hintsH config) $ \h -> do
                 if transSize config == ManySmall

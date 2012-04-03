@@ -19,27 +19,30 @@ import AtomIndex
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
-printSuiteDifference h ai testing unstable newAtomIs = do
+suiteDifference ai testing unstable newAtomIs =
     let newAtoms = S.map (ai `lookupAtom`) newAtomIs
-    let (newSource, newBinaries, _) = splitAtoms newAtoms
-    hPutStrLn h "Changes of Sources:"
-    printDifference h (setMap (ai `lookupSrc`) $ sources testing) newSource
-    hPutStrLn h "Changes of Package:"
-    printDifference h (setMap (ai `lookupBin`) $ binaries testing) newBinaries
-    hFlush h
+        (newSource, newBinaries, _) = splitAtoms newAtoms
+    in L.unlines [
+        "Changes of Sources:",
+        difference (setMap (ai `lookupSrc`) $ sources testing) newSource,
+        "Changes of Package:",
+        difference (setMap (ai `lookupBin`) $ binaries testing) newBinaries
+        ]
 
-printDifference :: (Show a, Ord a) => Handle -> S.Set a -> S.Set a -> IO ()
-printDifference h old new = do
+difference :: (Show a, Ord a) => S.Set a -> S.Set a -> L.ByteString
+difference old new =
     {-
     putStrLn "New state"
     forM_ (S.toList new) $ \x -> putStrLn $ "    " ++ show x
     -}
     let added = new `S.difference` old
-    hPutStrLn h "Newly added:"
-    forM_ (S.toList added) $ \x -> hPutStrLn h $ "    " ++ show x
-    let removed = old `S.difference` new
-    hPutStrLn h "Removed:"
-    forM_ (S.toList removed) $ \x -> hPutStrLn h $ "    " ++ show x
+        removed = old `S.difference` new
+    in L.unlines [
+        "Newly added:",
+        "   " `L.append` (L.concat (map (L.pack . show) $ S.toList added)),
+        "Removed:",
+        "   " `L.append` (L.concat (map (L.pack . show) $ S.toList removed))
+        ]
 
 setMap f = S.fromList . map f . IxS.toList
 
