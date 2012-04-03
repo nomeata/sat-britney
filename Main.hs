@@ -39,6 +39,7 @@ import ClauseSat
 import Picosat
 import LitSat
 import Hints
+import Difference
 import Heidi
 import ParseHints
 import Indices
@@ -347,13 +348,7 @@ runBritney config = do
                 hPutStrLn stderr $ show $ nest 4 $ fsep $ punctuate comma $ map (pp ai) $ IxS.toList unmodMissing
 
             mbDo (differenceH config) $ \h -> do
-                let newAtoms = S.map (aiD `lookupAtom`) newAtomIs
-                let (newSource, newBinaries, _) = splitAtoms newAtoms
-                hPutStrLn h "Changes of Sources:"
-                printDifference h (setMap (aiD `lookupSrc`) $ sources testing) newSource
-                hPutStrLn h "Changes of Package:"
-                printDifference h (setMap (aiD `lookupBin`) $ binaries testing) newBinaries
-                hFlush h
+                printSuiteDifference h aiD testing unstable newAtomIs
 
             mbDo (hintsH config) $ \h -> do
                 if transSize config == ManySmall
@@ -373,15 +368,6 @@ runBritney config = do
 
     hPutStrLn stderr $ "Done"
     
-splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
-             S.fold select ([],[],[])
-  where select (SrcAtom x) ~(l1,l2,l3) = (x:l1,l2,l3)
-        select (BinAtom x) ~(l1,l2,l3) = (l1,x:l2,l3)
-        select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
-        select _ x = x
-
-setMap f = S.fromList . map f . IxS.toList
-
 differenceStats :: SuiteInfo -> SuiteInfo -> IxS.Set Atom -> IO ()
 differenceStats testing unstable newAtoms = do
     let newAtomsSrc = IxS.generalize newAtoms `IxS.intersection` (sources testing `IxS.union` sources unstable)
@@ -396,20 +382,6 @@ differenceStats testing unstable newAtoms = do
         show (IxS.size (newAtomsBin `IxS.difference` binaries testing)) ++ " binaries added, " ++ 
         show (IxS.size (binaries testing `IxS.difference` newAtomsBin)) ++ " binaries removed, " ++
         show (IxS.size (binaries testing `IxS.intersection` newAtomsBin)) ++ " binaries remain."
-
-printDifference :: (Show a, Ord a) => Handle -> S.Set a -> S.Set a -> IO ()
-printDifference h old new = do
-    {-
-    putStrLn "New state"
-    forM_ (S.toList new) $ \x -> putStrLn $ "    " ++ show x
-    -}
-    let added = new `S.difference` old
-    hPutStrLn h "Newly added:"
-    forM_ (S.toList added) $ \x -> hPutStrLn h $ "    " ++ show x
-    let removed = old `S.difference` new
-    hPutStrLn h "Removed:"
-    forM_ (S.toList removed) $ \x -> hPutStrLn h $ "    " ++ show x
-
 
 removeRelated l1 l2 = filter check l1
  where  si = S.fromList [ (atom, reason) | Implies atom _ reason <- l2 ]

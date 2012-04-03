@@ -95,6 +95,13 @@ data Atom = SrcAtom !Source
 
 instance NFData Atom
 
+splitAtoms = (\(l1,l2,l3) -> (S.fromList l1, S.fromList l2, S.fromList l3)) .
+             S.fold select ([],[],[])
+  where select (SrcAtom x) ~(l1,l2,l3) = (x:l1,l2,l3)
+        select (BinAtom x) ~(l1,l2,l3) = (l1,x:l2,l3)
+        select (BugAtom x) ~(l1,l2,l3) = (l1,l2,x:l3)
+        select _ x = x
+
 instance Show Source where
     show (Source sn v)             = show sn ++ "_" ++ show v ++ "_src"
 
