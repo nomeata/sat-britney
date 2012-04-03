@@ -22,14 +22,13 @@ import qualified IndexSet as IxS
 suiteDifference ai testing unstable newAtomIs =
     let newAtoms = S.map (ai `lookupAtom`) newAtomIs
         (newSource, newBinaries, _) = splitAtoms newAtoms
-    in L.unlines [
-        "Changes of Sources:",
-        difference (setMap (ai `lookupSrc`) $ sources testing) newSource,
-        "Changes of Package:",
+    in L.unlines $
+        [ "Changes of Sources:" ] ++
+        difference (setMap (ai `lookupSrc`) $ sources testing) newSource ++
+        [ "Changes of Package:" ] ++
         difference (setMap (ai `lookupBin`) $ binaries testing) newBinaries
-        ]
 
-difference :: (Show a, Ord a) => S.Set a -> S.Set a -> L.ByteString
+difference :: (Show a, Ord a) => S.Set a -> S.Set a -> [L.ByteString]
 difference old new =
     {-
     putStrLn "New state"
@@ -37,12 +36,10 @@ difference old new =
     -}
     let added = new `S.difference` old
         removed = old `S.difference` new
-    in L.unlines [
-        "Newly added:",
-        "   " `L.append` (L.concat (map (L.pack . show) $ S.toList added)),
-        "Removed:",
-        "   " `L.append` (L.concat (map (L.pack . show) $ S.toList removed))
-        ]
+    in  [ "Newly added:" ] ++
+        [ "   " `L.append` L.pack (show x) | x <- S.toList added ] ++
+        [ "Removed:" ] ++
+        [ "   " `L.append` L.pack (show x) | x <- S.toList removed ]
 
 setMap f = S.fromList . map f . IxS.toList
 
