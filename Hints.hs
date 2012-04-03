@@ -18,10 +18,13 @@ import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
 generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> IxM.Map Binary SrcI -> S.Set AtomI -> L.ByteString
-generateHints ai testing unstable builtBy newAtoms =
-    (if length hintStrings == 1 then ("# " `L.append`) else id) .
-    (`L.append` "\n" ) . ("easy " `L.append`) . L.unwords $ hintStrings
-  where hintStrings = 
+generateHints ai testing unstable builtBy newAtoms = comment (format hintStrings)
+  where comment hint = case length hintStrings of
+            0 -> "# empty hint\n"
+            1 -> "#" `L.append` hint
+            _ -> hint
+        format xs = "easy " `L.append` L.unwords xs `L.append` "\n" 
+        hintStrings = 
             [ L.fromChunks [srcName , "/", srcVersion ]
             | srcI <- IxS.toList addedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
