@@ -105,7 +105,7 @@ findUnmodified config unstable testing nonCandidates =
 transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
 transitionRules config ai unstable testing general builtBy nc f x = (toProducer $
-    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ nonCandidates ++ buggy ) f x
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ completeBuild ++ nonCandidates ++ buggy ) f x
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             {-# SCC "keepSrc" #-}
@@ -128,6 +128,19 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
             ]
+        completeBuild = 
+            -- For each source and each arch each binary name built by the
+            -- source, depend on all binaries with that name. There is exactly
+            -- one such binary, unless there are binNMUs.
+            [Implies (genIndex src) binIs ("all binaries stay with the source") |
+                (src, bins) <- IxM.toList buildsUnion,
+                binsPerArchAndName <-
+                    groupBy ((==) `on` (binArch &&& binName) . snd) .
+                    sortBy  (compare `on` (binArch &&& binName) . snd) .
+                    map (id &&& (ai `lookupBin`)) $ bins,
+                let binIs = map (genIndex . fst) binsPerArchAndName
+            ]
+        {-
         releaseSync = 
             {-# SCC "releaseSync" #-}
             -- release architectures ought to all migrate
@@ -156,7 +169,7 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
                 length binGroup > 1,
                 let binIs = map (genIndex . fst) binGroup
             ]
-
+        -}
         needsSource = 
             {-# SCC "needsSource" #-}
             -- a package needs its source

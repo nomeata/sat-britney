@@ -94,3 +94,9 @@ explanation of these (at 3566a214f9b99819d1bdce22d88be4f140429307):
    those from smooth transitions:
    basic-smooth-update
    
+Successful hints since SAT-Britney went live:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2012.03.28 22:03:48: libgpiv/0.6.1-4 pygpiv/2.0.0-4
+2012.03.31 22:03:55: pytables/2.3.1-3 tessa/0.3.1-6
+2012.04.02 22:03:48: libgeotiff-dfsg/1.3.0+dfsg-3 liblas/1.2.1-5
+
