@@ -105,7 +105,7 @@ findUnmodified config unstable testing nonCandidates =
 transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
 transitionRules config ai unstable testing general builtBy nc f x = (toProducer $
-    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ completeBuild ++ nonCandidates ++ buggy ) f x
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ binNMUsync ++ completeBuild ++ nonCandidates ++ buggy ) f x
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
@@ -124,6 +124,23 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
+            ]
+        binNMUsync = 
+            -- For each source, keep all binary packages from unstable on an
+            -- architecture together. Assumes that the one-binary-package
+            -- condition is fulfilled in unstable
+            [AllOrNone binIs ("builds should not be separated") |
+                (src, bins) <- IxM.toList (builds unstable),
+                binPerArch <- groupBy ((==) `on` binArch . snd) .
+                              sortBy  (compare `on` binArch . snd) .
+                              map (id &&& (ai `lookupBin`)) $ bins,
+                length binPerArch > 1,
+                -- Not for arch all, not required
+                ST.isJust $ binArch (snd (head binPerArch)),
+                binGroup   <- groupBy ((==)    `on` binVersion . snd) .
+                              sortBy  (compare `on` binVersion . snd) $ binPerArch,
+                length binGroup > 1,
+                let binIs = map (genIndex . fst) binGroup
             ]
         completeBuild = 
             -- For each source and each arch each binary name built by the
