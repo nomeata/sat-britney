@@ -55,7 +55,7 @@ minAgeTable = M.fromList [
     ]
 
 defaultConfig :: Config
-defaultConfig = Config "." Nothing (V.toList allArches) (V.toList allArches) i386 minAgeTable (Age 10) False 0 AsLargeAsPossible
+defaultConfig = Config "." Nothing (V.toList allArches) (V.toList allArches) i386 minAgeTable (Age 10) ["libs","oldlibs"] False 0 AsLargeAsPossible
                        Nothing False Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where i386 = read "i386"
 

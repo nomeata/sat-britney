@@ -55,6 +55,7 @@ parseSuite config ai dir = do
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
     let ( binaryAtoms
+         ,smoothAtoms
          ,binaryNamesList
          ,binaryDepends
          ,binaryProvides
@@ -63,9 +64,11 @@ parseSuite config ai dir = do
          ,builtByList
          ,archBuiltByList
          ,ai') = readPara ai binaries
-        readPara ai [] = ([], [], [], [], [], [], [], [], ai)
+        readPara ai [] = ([], [], [], [], [], [], [], [], [], ai)
         readPara ai (Para {..}:ps) =
                     ( binI:bins
+                    , if sectionField `elem` smoothSections config
+                      then binI:smooths else smooths
                     , binNamesEntries ++ binNames
                     , (binI,depends++preDepends):deps
                     , provides ++ provs
@@ -74,7 +77,7 @@ parseSuite config ai dir = do
                     , (binI,srcI): bb
                     , ST.maybe id (\a -> (:) (a,srcI)) arch $ abb
                     , finalAi)
-          where (bins, binNames, deps, provs, confls, brks, bb, abb, finalAi) = readPara ai'' ps
+          where (bins, smooths, binNames, deps, provs, confls, brks, bb, abb, finalAi) = readPara ai'' ps
                 pkg = packageField
                 version = DebianVersion versionField
                 archS = architectureField
@@ -137,6 +140,8 @@ parseSuite config ai dir = do
 
     let binaries = {-# SCC "binaries" #-} IxS.fromList $ s binaryAtoms
 
+    let smooths = IxS.fromList $ s smoothAtoms
+
     let atoms = {-# SCC "atoms" #-} IxS.generalize sourceAtoms `IxS.union` IxS.generalize binaries
 
     -- Now to the bug file
@@ -168,6 +173,7 @@ parseSuite config ai dir = do
         ( SuiteInfo
             sourceAtoms
             binaries
+            smooths
             atoms
             sourceNames
             binaryNames

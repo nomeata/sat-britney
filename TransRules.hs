@@ -160,7 +160,8 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
         needsSource = 
             -- a package needs its source
             [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
-                (bin, src) <- IxM.toList builtBy
+                (bin, src) <- IxM.toList builtBy,
+                bin `IxS.notMember` smoothBinaries testing 
             ]
         nonCandidates =
             [ Not (genIndex atom) reason

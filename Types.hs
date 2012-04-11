@@ -172,6 +172,7 @@ genIndex (Index i) = Index i
 data SuiteInfo = SuiteInfo {
     sources :: IxS.Set Source,
     binaries :: IxS.Set Binary,
+    smoothBinaries :: IxS.Set Binary,
     atoms :: IxS.Set Atom,
     sourceNames :: Map SourceName [SrcI],
     binaryNames :: Map (BinName, Arch) [BinI],
@@ -244,6 +245,7 @@ data Config = Config
     , archForAll :: Arch
     , minAges :: Map Urgency Age
     , defaultMinAge :: Age
+    , smoothSections :: [BS.ByteString]
 
     , showStats :: Bool
     , offset :: Integer
