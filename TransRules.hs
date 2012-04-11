@@ -105,7 +105,7 @@ findUnmodified config unstable testing nonCandidates =
 transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
 transitionRules config ai unstable testing general builtBy nc f x = (toProducer $
-    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ binNMUsync ++ completeBuild ++ nonCandidates ++ buggy ) f x
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ binNMUsync ++ newSourceSync ++ completeBuild ++ nonCandidates ++ buggy ) f x
   where keepSrc = 
             -- A source that exists both in unstable and in testing has to stay in testing
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
@@ -158,6 +158,19 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
                     map (id &&& (ai `lookupBin`)) $ bins,
                 -- Do not force this if there is not a binary in testing already.
                 any (`IxS.member` binaries testing) binsPerArchAndName,
+                let binIs = map genIndex binsPerArchAndName
+            ]
+        newSourceSync =
+            [Implies (genIndex src) binIs ("all binaries stay with the source") |
+                (src, bins) <- IxM.toList (builds unstable),
+                src `IxS.notMember` sources testing,
+                -- This might be redundant, as all these sets will be
+                -- singletons anyways
+                binsPerArchAndName <-
+                    map (map fst) .
+                    groupBy ((==) `on` (binArch &&& binName) . snd) .
+                    sortBy  (compare `on` (binArch &&& binName) . snd) .
+                    map (id &&& (ai `lookupBin`)) $ bins,
                 let binIs = map genIndex binsPerArchAndName
             ]
         needsSource = 
