@@ -147,15 +147,18 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
             -- source, depend on all binaries with that name. There is exactly
             -- one such binary, unless there are binNMUs.
             [Implies (genIndex src) binIs ("all binaries stay with the source") |
-                src <- IxS.toList $ IxS.union (sources testing) (sources unstable),
+                src <- IxS.toList (sources testing),
                 let bins = IxS.toList $ IxS.fromList $
                         fromMaybe [] (IxM.lookup src (builds unstable)) ++
                         fromMaybe [] (IxM.lookup src (builds testing)),
                 binsPerArchAndName <-
+                    map (map fst) .
                     groupBy ((==) `on` (binArch &&& binName) . snd) .
                     sortBy  (compare `on` (binArch &&& binName) . snd) .
                     map (id &&& (ai `lookupBin`)) $ bins,
-                let binIs = map (genIndex . fst) binsPerArchAndName
+                -- Do not force this if there is not a binary in testing already.
+                any (`IxS.member` binaries testing) binsPerArchAndName,
+                let binIs = map genIndex binsPerArchAndName
             ]
         needsSource = 
             -- a package needs its source
