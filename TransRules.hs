@@ -175,9 +175,16 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
             ]
         needsSource = 
             -- a package needs its source
-            [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
+            [Implies (genIndex bin) [genIndex src] "of the DFSG" |
                 (bin, src) <- IxM.toList builtBy,
                 bin `IxS.notMember` smoothBinaries testing 
+            ] ++
+            -- Smooth upgrades need their source, or a newer version thereof
+            [Implies (genIndex bin) (map genIndex srcIs) "of the DFSG (smooth upgrade)" |
+                (bin, srcI) <- IxM.toList builtBy,
+                bin `IxS.member` smoothBinaries testing,
+                let (Source pkg _) = ai `lookupSrc` srcI,
+                let srcIs = fromMaybe [] $ M.lookup pkg sourcesUnion
             ]
         nonCandidates =
             [ Not (genIndex atom) reason
@@ -194,8 +201,9 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
                 atom <- genIndex <$> IxS.toList forbiddenBugs
             ]
 
-        sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
-        binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
+        sourcesBoth = M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
+        sourcesUnion = M.unionWith (++) (sourceNames unstable) (sourceNames testing)
+        binariesBoth =  M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
         -- We assume that the dependency information is the same, even from different suites
 
         bugsUnion = {-# SCC "bugsUnion" #-} IxM.unionWith (++) (bugs unstable) (bugs testing)
