@@ -46,13 +46,10 @@
 
 
 \begin{abstract}
-We show that it is feasible to formulate the testing migration problem as a practically solvable PMAX-SAT instance, when package dependencies and conflicts are pre-processed sensibly.\\
-
-\centering
-\textbf{Early draft, with surely lots of typoes and other errors.}
+We show that it is feasible to formulate the testing migration problem as a practically solvable PMAX-SAT instance, when package dependencies and conflicts are pre-processed sensibly.
 \end{abstract}
 
-\tableofcontents
+%\tableofcontents
 
 \section{Introduction}
 
@@ -126,7 +123,7 @@ We use $\{A \to B\}$ as an abbreviation of the clause $A^- \cup B$, where $A$ an
 
 A \emph{PMAX-SAT instance} $P\in \mathcal P(\mathcal P(V^\pm))\times \mathcal P(\mathcal P(V^\pm))$ consits of two sets of clauses, the first set being the \emph{hard clauses} and the second set being the \emph{soft clauses}. Its solutions are those of the hard clauses, understood as a regular SAT problem, the \emph{quality} of a solution $S$ is measured by the number of fulfilled soft clauses:
 \[
-\#\{c\in \pi_2(S) \mid c\cap S \ne \emptyset \vee c \cap (V\setminus S)^- \ne \emptyset\}\,.
+\#\{c\in \pi_2(P) \mid c\cap S \ne \emptyset \vee c \cap (V\setminus S)^- \ne \emptyset\}\,.
 \]
 
 For both SAT and PMAX-SAT, a variety of good general purpose solvers are available.
@@ -137,7 +134,7 @@ The main ideas of this paper can be found in this section, in which we will desc
 
 \subsection{Encoding in absence of conflicts}
 
-Assume first that there are no conflicts involved ($C = \emptyset$). Then the testing migration problem can be straightforwardly cast into a SAT instance. We take the set of packages as the set of atoms ($V=\mathcal B$) and define clauses that enforce the three conditions for an admissible transition:
+Assume first that there are no conflicts involved ($C = \emptyset$). Then the testing migration problem can be straightforwardly cast into a SAT instance. We take the set of packages as the set of atoms ($V=\mathcal B$) and define clauses that enforce the three conditions for an admissible migration:
 \begin{align*}
 P_u &\coloneqq \{ \{p_1 \uparrow p_2\} \mid p_1,p_2 \in C_u\} \\
 P_t^1 &\coloneqq \{ \{ p \to d \} \mid p\in \mathcal B,\ d \in D(p)\}\\
@@ -313,7 +310,7 @@ The numbers of this approach are 3276791 atoms and 21128454 clauses.
 
 \section{Finding optimal solutions with PMAX-SAT}
 
-Solving the SAT encoding described in the previous section will result in any of many possible solution, but not necessarily the best solution. Recall that migration from $T$ to $T'$ is measured by the size of the symmetric difference between $T$ and $T'$. Usually, one is interested in the largest transition. To achieve that, soft clauses are added to the problem:
+Solving the SAT encoding described in the previous section will result in any of many possible solution, but not necessarily the best solution. Recall that migration from $T$ to $T'$ is measured by the size of the symmetric difference between $T$ and $T'$. Usually, one is interested in the largest migration. To achieve that, soft clauses are added to the problem:
 \begin{align*}
 P_s^{\text{max}} &\coloneqq \{ \{v\} \mid v \in U\setminus T\} \cup \{ \{v^-\} \mid v \in T\setminus U\}
 \end{align*}
@@ -340,7 +337,7 @@ The code is Free Software, licensed under the GPL, and can be obtained from the 
 
 We build upon work done on the problem of testing the installability of packages, especially \cite{edos}. Further work in that direction investigated not only the installability of a singe package, but to termine sets of co-installable packages \cite{coinst}, and in finding good choices for upgrading an installation \cite{upgrade}, \cite{apt-pbo}.
 
-Recent unpublished work by Jérôme Vouillon based on \cite{coinst} is also able to solve the transition problem while enforcing the stronger requirement that packages that were co-installable testing before are still co-installable afterwards. Optionally, this requirement can be relaxed, so the testing transition problem as described here can also be solved. Their implementation beforms better than ours. The main difference is that our approach finds a tractable and easily understandable encoding in SAT and uses off-the-shelve solvers, while their tool, written in OCaML, applies sophisticated transformation of the package relations, identifying equivalent packages and solving the resulting smaller problem without the help of external tools. From a users' point of view, our tool provides nothing over their tool.
+Recent unpublished work by Jérôme Vouillon based on \cite{coinst} is also able to solve the migration problem while enforcing the stronger requirement that packages that were co-installable testing before are still co-installable afterwards. Optionally, this requirement can be relaxed, so the testing migration problem as described here can also be solved. Their implementation beforms better than ours. The main difference is that our approach finds a tractable and easily understandable encoding in SAT and uses off-the-shelve solvers, while their tool, written in OCaML, applies sophisticated transformation of the package relations, identifying equivalent packages and solving the resulting smaller problem without the help of external tools. From a users' point of view, our tool provides nothing over their tool.
 
 %\subsubsection{A failed attempt and other ideas}
 %
@@ -357,7 +354,7 @@ Partially supported by the Deutsche Telekom Stiftung. I would like to thank Ralf
 
 \section{Conclusion and further work}
 
-We have shown the feasiblity of solving the testing transition problem using off-the-shelve SAT solvers, and empirically verifyied the usefulness of the approach, applying it to the large package repositoriy created by the Debian project.
+We have shown the feasiblity of solving the testing migration problem using off-the-shelve SAT solvers, and empirically verifyied the usefulness of the approach, applying it to the large package repositoriy created by the Debian project.
 
 Although the current state of the program yields usable results, we expect that further reductions in the SAT problem size are possible. A considerably faster tool would allow interactive use, which can assist the distribution maintainers in finding out why a certain package does not migrate.
 
