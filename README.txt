@@ -93,4 +93,5 @@ Successful hints since SAT-Britney went live:
 2012.03.28 22:03:48: libgpiv/0.6.1-4 pygpiv/2.0.0-4
 2012.03.31 22:03:55: pytables/2.3.1-3 tessa/0.3.1-6
 2012.04.02 22:03:48: libgeotiff-dfsg/1.3.0+dfsg-3 liblas/1.2.1-5
-
+2012.04.16 10:03:46: octave-ocs/0.1.3-1 octave-odepkg/0.8.0-1
+2012.04.16 10:03:46: octave-communications/1.1.0-2 octave-control/2.3.50-1 octave-data-smoothing/1.3.0-2 octave-econometrics/1:1.0.8-6 octave-financial/0.3.2-3 octave-ga/0.9.8-3 octave-miscellaneous/1.1.0-1 octave-optim/1.0.17-2 octave-signal/1.1.2-1 octave-specfun/1.1.0-1 octave-statistics/1.1.0-1 octave-struct/1.0.9-2 octave-time/1.0.9-4 octave-vrml/1.0.11-2
