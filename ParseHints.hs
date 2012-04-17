@@ -81,8 +81,11 @@ readHintFile :: FilePath -> (String, [String]) -> IO [Hint]
 readHintFile dir (file,allowed) =
     do ex <- doesFileExist (dir </> file)
        if ex
-         then concatMap (readHintLine allowed) . lines <$> readFile (dir </> file)
+         then concatMap (readHintLine allowed) . untilFinished . lines <$> readFile (dir </> file)
          else return []
+
+untilFinished :: [String] -> [String]
+untilFinished = takeWhile (\l -> not ("finished" `isPrefixOf` l))
 
 readHintLine :: [String] -> String -> [Hint]
 readHintLine allowed line =

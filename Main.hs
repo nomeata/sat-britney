@@ -187,7 +187,6 @@ runBritney config = do
 
     hints <- readHintFiles config
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
-    print hints
     let hintResults = processHints config ai unstable testing general hints
 
     let nonCandidates :: Producer (SrcI, String)
