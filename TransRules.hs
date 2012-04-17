@@ -119,12 +119,14 @@ transitionRules config ai unstable testing general builtBy hr nc f x = (toProduc
                 all (\src -> src `IxS.notMember` removedSources hr) pkgs,
                 let atoms = map genIndex (nub pkgs)
             ]
-        keepBin =  [] {-
-            -- A binary that exists both in unstable and in testing has to stay in testing
+        keepBin = 
+            -- A binary that exists both in unstable and in testing has to stay
+            -- in testing, unless a remove hint is present
             [OneOf atoms ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
                 ((name,arch),pkgs) <- M.toList binariesBoth,
+                all (\pkg -> builtBy IxM.! pkg `IxS.notMember` removedSources hr) pkgs,
                 let atoms = map genIndex (nub pkgs)
-            ] -}
+            ] 
         uniqueBin = 
             -- At most one binary per name and architecture
             [AtMostOne (nub pkgs) ("at most version of " ++ show name ++ " ought to be unique on " ++ show arch) |
