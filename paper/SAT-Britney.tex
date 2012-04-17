@@ -59,13 +59,13 @@ The problem discussed in this paper is that of the \emph{testing migration} that
 
 Previously, only questions related to installability have been tackled with formal methods (\cite{edos}\dots), such as which packages from a fixed repository are installable, and which packages should installed when upgrading a system. Our problem is related, but more difficult, because the installability test has to be applied to many possible choices of updated packages. This also implies that our problem at hand is $\mathcal{NP}$-hard, as testing package installability is \cite{burrows}.
 
-The key idea in this paper is to reduce the size of the naïve but unreasonably large SAT instance by pre-processing of the interaction of dependencies and conflicts between the packages, while still leaving the hard part of the SAT solving to a general purpose SAT solver.
+The key idea in this paper is to reduce the size of the naïve but unreasonably large SAT instance by pre-processing of the interaction of dependencies and conflicts between the packages, while still leaving the hard part of the SAT solving to a general purpose SAT solver. The practical feasiblity of solving the testing migration problem this way was unexpected to researches in the field, who have initially expressed scepticism. \footnote{Rals Treinen, Stefano Zacciroli: \url{http://lists.debian.org/debian-release/2011/06/msg00311.html}}
 
 This approach has been implemented by the author and is deployed by the Debian project, to assist their existing, incomplement testing migration implementation. The main contributions of this paper are these:
 \begin{itemize}
-\item A formal description of the testing migration problem, adaptable to vaious concret applications.
+\item A formal description of the testing migration problem, adaptable to various concret applications.
 \item An implementation of the testing migration problem as a PMAX-SAT instance.
-\item Preprocessing steps that make this implementation practable, with correctness proofs.
+\item Preprocessing steps that make this implementation tractable, with correctness proofs.
 \item An implementation of the solution, empirically verifying its practicability and usefulness.
 \end{itemize}
 
