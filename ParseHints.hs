@@ -93,6 +93,7 @@ readHintLine allowed line =
 
 parseHint "block" args = map Block $ mapMaybe parseHintSpec args
 parseHint "block-udeb" args = map Block $ mapMaybe parseHintSpec args
+parseHint "remove" args = map Remove $ mapMaybe parseHintSpec args
 parseHint _       _    = []
 
 parseHintSpec src = case splitOn "/" src of
@@ -102,6 +103,7 @@ parseHintSpec src = case splitOn "/" src of
 
 data HintResults = HintResults {
     blockedSources :: IxS.Set Source
+    , removedSources :: IxS.Set Source
     }
   deriving (Show)
   
@@ -113,6 +115,12 @@ processHints config ai unstable testing general hints = HintResults {..}
         isBlockedBy src True _ = True
         isBlockedBy src False (Block hintSpec) = hintSpecApplies hintSpec src
         isBlockedBy src b _ = b
+
+        removedSources = IxS.filter isRemovedSource $ sources unstable `IxS.union` sources testing
+        isRemovedSource srcI = foldl' (isRemovedBy (ai `lookupSrc` srcI)) False hints
+        isRemovedBy src True _ = True
+        isRemovedBy src False (Remove hintSpec) = hintSpecApplies hintSpec src
+        isRemovedBy src b _ = b
 
 -- TODO: binNMU syntax
 hintSpecApplies (HintSpec sn1 v1 Nothing) (Source name version) = 

@@ -187,6 +187,7 @@ runBritney config = do
 
     hints <- readHintFiles config
     hPutStrLn stderr $ "Read " ++ show (length hints) ++ " hints."
+    print hints
     let hintResults = processHints config ai unstable testing general hints
 
     let nonCandidates :: Producer (SrcI, String)
@@ -201,12 +202,12 @@ runBritney config = do
         forM_ (build nonCandidates) $ \(src, reason) ->
             hPutStrLn h $ show (pp ai src) ++ " " ++ reason
 
-    let transRules = transitionRules config ai unstable testing general builtBy nonCandidates
-        desired = desiredAtoms unstable testing
+    let transRules = transitionRules config ai unstable testing general builtBy hintResults nonCandidates
+        desired = desiredAtoms unstable testing hintResults
         -- In many-small-mode, we do not try to remove packages, as
         -- that would yield far too many individual removals
         unwanted | transSize config == ManySmall = toProducer [] 
-                 | otherwise        = unwantedAtoms unstable testing
+                 | otherwise        = unwantedAtoms unstable testing hintResults
         cnfTrans = {-# SCC "cnfTrans" #-} conjs2SATProb (unIndex $ maxIndex ai) $ clauses2CNF transRules
 
     hPutStrLn stderr $ "Running transition in happy-no-dependency-world..."

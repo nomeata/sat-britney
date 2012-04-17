@@ -35,7 +35,7 @@ import qualified IndexMap as IxM
 findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults
     -> Producer (SrcI, String)
 findNonCandidates config ai unstable testing general builtBy hr f x =
-    (toProducer $ outdated ++ missingArch ++ obsolete ++ tooyoung ++ blocked ++ isMoreBuggy) f x
+    (toProducer $ outdated ++ missingArch ++ obsolete ++ tooyoung ++ blocked ++ removed ++ isMoreBuggy) f x
   where tooyoung = 
             -- packages need to be old enough
             [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
@@ -74,6 +74,11 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
             [ (src, "is blocked by the release team") |
                 src <- IxS.toList (blockedSources hr)
             ]
+        removed = 
+            [ (src, "is removed by the release team") |
+                src <- IxS.toList (removedSources hr),
+                src `IxS.notMember` sources testing
+            ]
         isMoreBuggy = 
             [ (srcI, "has new bug " ++ show (ai `lookupBug` bugI)) |
                 (aI,bugIs) <- IxM.toList $ bugs unstable,
@@ -102,22 +107,24 @@ findUnmodified config unstable testing nonCandidates =
             concatMap (builds unstable IxM.!) $
             IxS.toList nonCandidates
 
-transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> Producer (SrcI, String)
+transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults -> Producer (SrcI, String)
      -> Producer (Clause AtomI)
-transitionRules config ai unstable testing general builtBy nc f x = (toProducer $
+transitionRules config ai unstable testing general builtBy hr nc f x = (toProducer $
     keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ binNMUsync ++ newSourceSync ++ completeBuild ++ nonCandidates ++ buggy ) f x
   where keepSrc = 
-            -- A source that exists both in unstable and in testing has to stay in testing
+            -- A source that exists both in unstable and in testing has to stay
+            -- in testing, unless a remove hint is present
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
                 (name,pkgs) <- M.toList sourcesBoth,
+                all (\src -> src `IxS.notMember` removedSources hr) pkgs,
                 let atoms = map genIndex (nub pkgs)
             ]
-        keepBin = 
+        keepBin =  [] {-
             -- A binary that exists both in unstable and in testing has to stay in testing
             [OneOf atoms ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
                 ((name,arch),pkgs) <- M.toList binariesBoth,
                 let atoms = map genIndex (nub pkgs)
-            ]
+            ] -}
         uniqueBin = 
             -- At most one binary per name and architecture
             [AtMostOne (nub pkgs) ("at most version of " ++ show name ++ " ought to be unique on " ++ show arch) |
@@ -219,13 +226,15 @@ transitionRules config ai unstable testing general builtBy nc f x = (toProducer 
             bug <- IxM.findWithDefault [] atom bugsUnion ]
         forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `IxS.difference` bugsInTesting
 
-desiredAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
-desiredAtoms unstable testing f x = (toProducer $
+desiredAtoms :: SuiteInfo -> SuiteInfo -> HintResults -> Producer AtomI
+desiredAtoms unstable testing hr f x = (toProducer $
     fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing) f x
 
-unwantedAtoms :: SuiteInfo -> SuiteInfo -> Producer AtomI
-unwantedAtoms unstable testing f x = (toProducer $ 
-    fmap genIndex $ IxS.toList $ binaries testing `IxS.difference` binaries unstable) f x
+unwantedAtoms :: SuiteInfo -> SuiteInfo -> HintResults -> Producer AtomI
+unwantedAtoms unstable testing hr f x = (toProducer $ 
+    (fmap genIndex $ IxS.toList $ removedSources hr) ++
+    (fmap genIndex $ IxS.toList $ binaries testing `IxS.difference` binaries unstable)
+    ) f x
 
 combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
 combine m1 m2 x = (x `M.lookup` m1) >>= (`M.lookup` m2)
