@@ -41,7 +41,10 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
             [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
                 src <- IxS.toList sourcesOnlyUnstable,
                 Just age <- [src `M.lookup` ages general],
-                let minAge = fromMaybe (defaultMinAge config) $
+                let minAge | src `IxS.member` sourcesNew 
+                           = defaultMinAge config
+                           | otherwise
+                           = fromMaybe (defaultMinAge config) $
                              urgencies general `combine` minAges config $ src,
                 age <= minAge
             ] 
@@ -97,6 +100,7 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
             
 
         sourcesOnlyUnstable = IxS.difference (sources unstable) (sources testing)
+        sourcesNew = IxS.fromList $ concat $ M.elems $ M.difference (sourceNames unstable) (sourceNames testing)
 
 -- Binaries that are in testing and will stay there.
 -- TODO: Force removals
