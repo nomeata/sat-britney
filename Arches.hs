@@ -11,7 +11,7 @@ newtype Arch = Arch { unArch :: Int }
     deriving (Ord, Eq, NFData)
 
 archNames :: V.Vector String
-archNames = V.fromList $ sort $ words $ "i386 sparc powerpc armel ia64 mips mipsel s390 amd64 kfreebsd-i386 kfreebsd-amd64"
+archNames = V.fromList $ sort $ words $ "i386 sparc powerpc armel armhf ia64 mips mipsel s390 s390x amd64 kfreebsd-i386 kfreebsd-amd64"
 
 archNamesBS :: V.Vector BS.ByteString
 archNamesBS = V.map BS.pack archNames
