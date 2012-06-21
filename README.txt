@@ -99,3 +99,7 @@ Successful hints since SAT-Britney went live:
 2012.05.07 22:03:49: w3c-dtd-xhtml/1.2-3 w3c-sgml-lib/1.2-3
 2012.05.09 10:04:04: playonlinux/4.0.14-1 winetricks/0.0+20120313+svn798-3
 2012.05.09 22:03:45: gnome-dictionary/3.4.0-2 gnome-system-log/3.4.1-1
+2012.06.15 22:03:57: naspro-bridge-it/0.4.1-1 naspro-core/0.4.0-3
+2012.06.17 10:04:07: banshee/2.4.1-3 gnome-do-plugins/0.8.4-5 gdata-sharp/2.1.0.0-1
+2012.06.20 22:04:11: libmp3splt/0.7.2-2 mp3splt/2.4.2-2 mp3splt-gtk/0.7.2-2
+
