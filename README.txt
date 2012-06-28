@@ -20,7 +20,7 @@ Usage
 ~~~~~
 
 For details on the flags, please consult SAT-Britney --help output. You need to
-enable at lest one of the various outputs (e.g. --hints), otherwise you are
+enable at least one of the various outputs (e.g. --hints), otherwise you are
 burning CPU cycles for nothing.
 
 The directory passed through the --dir flag has look like a britney2 directory
