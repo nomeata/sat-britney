@@ -23,11 +23,12 @@ data Para = Para
     , conflictsField :: !BS.ByteString
     , breaksField :: !BS.ByteString
     , sourceField :: !BS.ByteString
+    , sectionField :: !BS.ByteString
     }
     deriving (Eq, Show)
 
 emptyPara :: Para
-emptyPara = Para BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty
+emptyPara = Para BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty BS.empty
 
 parseControlFile :: FilePath -> IO [Para]
 parseControlFile filename = parseLines . BS.lines <$> BS.readFile filename
@@ -54,6 +55,7 @@ addField l para =
     if n == "Conflicts"    then para { conflictsField = v } else
     if n == "Breaks"       then para { breaksField = v } else
     if n == "Source"       then para { sourceField = v } else
+    if n == "Section"      then para { sectionField = v } else
     para
  where (n,v') = DBS.breakByte colon l
        v = BS.dropWhile isSpace (BS.tail v')

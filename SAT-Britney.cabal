@@ -13,29 +13,37 @@ Cabal-version:       >=1.6
 Executable SAT-Britney
   Main-is: Main.hs
 
-  ghc-options: -rtsopts -with-rtsopts -K83886080
+  ghc-options: -rtsopts -with-rtsopts "-K83886080 -t"
 
   ld-options: -static -pthread
 
-  Build-Depends: base ==4.*
+  Build-Depends: base ==4.5.*
         , containers
+        , mtl
         , array
         , directory
         , bytestring
         , process
         , pretty
         , time
+        , old-time
         , parsec >= 3.1
         , filepath
         , Cabal
+        , safe
+        , HaXml
 
+        , primitive
         , unix
+        , datetime
         , bytestring-nums
         , strict
         , deepseq
         , bitarray
         , vector
         , vector-algorithms
+        , split
+        , parallel
 
   Pkgconfig-Depends: 
         libdpkg

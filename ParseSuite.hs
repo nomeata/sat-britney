@@ -7,8 +7,11 @@
 module ParseSuite where
 
 import System.FilePath
+import System.Directory
+import System.Time
 import Data.Functor
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Text.Parsec
 import Text.Parsec.ByteString
 import Data.List
@@ -17,13 +20,17 @@ import Data.ByteString.Nums.Careless
 import qualified Data.Strict as ST
 import System.IO
 import Data.Time
+import Data.DateTime ( fromClockTime )
 import Data.Char
 import Data.Function
 import Control.DeepSeq
 import Control.Arrow (first)
+import Control.Seq
 
 import ControlParser
 import Types
+import Arches
+import AtomIndex
 import Indices
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
@@ -32,7 +39,7 @@ myParseControl file = do
     hPutStrLn stderr $ "Reading file " ++ file
     parseControlFile file
 
-parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, AtomIndex)
+parseSuite :: Config -> AtomIndex -> FilePath -> IO (SuiteInfo, RawPackageInfo, AtomIndex)
 parseSuite config ai dir = do
     {-
     sources <- myParseControl (dir </>"Sources")
@@ -48,30 +55,36 @@ parseSuite config ai dir = do
         mapM (\arch -> myParseControl $ dir </>"Packages_" ++ show arch) (arches config)
 
     let ( binaryAtoms
+         ,smoothAtoms
          ,binaryNamesList
          ,binaryDepends
          ,binaryProvides
          ,binaryConflicts
          ,binaryBreaks
          ,builtByList
+         ,archBuiltByList
          ,ai') = readPara ai binaries
-        readPara ai [] = ([], [], [], [], [], [], [], ai)
+        readPara ai [] = ([], [], [], [], [], [], [], [], [], ai)
         readPara ai (Para {..}:ps) =
                     ( binI:bins
+                    , if sectionField `elem` smoothSections config
+                      then binI:smooths else smooths
                     , binNamesEntries ++ binNames
                     , (binI,depends++preDepends):deps
                     , provides ++ provs
                     , (binI,conflicts):confls
                     , (binI,breaks):brks
                     , (binI,srcI): bb
-                    ,finalAi)
-          where (bins, binNames, deps, provs, confls, brks, bb, finalAi) = readPara ai'' ps
+                    , ST.maybe id (\a -> (:) (a,srcI)) arch $ abb
+                    , finalAi)
+          where (bins, smooths, binNames, deps, provs, confls, brks, bb, abb, finalAi) = readPara ai'' ps
                 pkg = packageField
                 version = DebianVersion versionField
                 archS = architectureField
                 (arch,onArches) = if archS == "all"
                                   then (ST.Nothing, arches config)
-                                  else (ST.Just (Arch archS), [Arch archS])
+                                  else let arch = archFromByteString archS
+                                       in (ST.Just arch, [arch])
                 binNamesEntries = [ ((BinName pkg,a),[binI]) | a <- onArches ]
                 atom = Binary (BinName pkg) version arch
                 (ai',binI) = addBin ai atom
@@ -94,36 +107,40 @@ parseSuite config ai dir = do
                 sourceAtom = Source (SourceName source) sourceVersion
                 (ai'', srcI) = addSrc ai' sourceAtom
 
-    let builtBy = {-# SCC "builtBy" #-} IxM.fromList builtByList
+    let builtBy = {-# SCC "builtBy" #-} IxM.fromList $ s builtByList
 
-    let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) [ (src,[bin]) | (bin,src) <- builtByList ]
+    let builds = {-# SCC "builds" #-}  IxM.fromListWith (++) $ s [ (src,[bin]) | (bin,src) <- builtByList ]
 
-    let depends = {-# SCC "depends" #-} IxM.fromList binaryDepends
+    let buildsArches = {-# SCC "builds" #-}  IxM.fromListWith (S.union) $ s [ (src,S.singleton a) | (a,src) <- archBuiltByList ]
 
-    let provides = {-# SCC "provides" #-} M.fromList binaryProvides
+    let depends = {-# SCC "depends" #-} binaryDepends
 
-    let conflicts = {-# SCC "conflicts" #-} IxM.fromList binaryConflicts
+    let provides = {-# SCC "provides" #-} M.fromListWith (++) $ s binaryProvides
 
-    let breaks = {-# SCC "breaks" #-} IxM.fromList binaryBreaks
+    let conflicts = {-# SCC "conflicts" #-} binaryConflicts
 
-    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) binaryNamesList
+    let breaks = {-# SCC "breaks" #-} binaryBreaks
+
+    let binaryNames = {-# SCC "binaryNames" #-} M.fromListWith (++) $ s binaryNamesList
 
     -- We use the sources found in the Packages file as well, because they
     -- are not always in SOURCES
-    let sourceAtoms = {-# SCC "sourceAtoms" #-} IxS.fromList (IxM.keys builds)
+    let sourceAtoms = {-# SCC "sourceAtoms" #-} IxS.fromList $ s (IxM.keys builds)
 
-    let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++)
+    let sourceNames = {-# SCC "sourceNames" #-} M.fromListWith (++) $ s
             [ (pkg, [srcI]) | srcI <- IxS.toList sourceAtoms,
                               let Source pkg _  = ai' `lookupSrc` srcI ]
 
-    let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) [ (source, newer) |
+    let newerSources = {-# SCC "newerSource" #-} IxM.fromListWith (++) $ s [ (source, newer) |
             srcIs <- M.elems sourceNames, 
             let sources = [ (v, srcI) | srcI <- srcIs , let Source _ v  = ai' `lookupSrc` srcI ],
             let sorted = map snd $ sortBy (cmpDebianVersion `on` fst) sources,
             source:newer <- tails sorted
             ]
 
-    let binaries = {-# SCC "binaries" #-} IxS.fromList binaryAtoms
+    let binaries = {-# SCC "binaries" #-} IxS.fromList $ s binaryAtoms
+
+    let smooths = IxS.fromList $ s smoothAtoms
 
     let atoms = {-# SCC "atoms" #-} IxS.generalize sourceAtoms `IxS.union` IxS.generalize binaries
 
@@ -131,7 +148,7 @@ parseSuite config ai dir = do
     hPutStrLn stderr "Reading and parsing bugs file"
     bugS <- BS.readFile (dir </> "BugsV")
 
-    let (rawBugs, ai'') = {-# SCC "rawBugs" #-} first M.fromList $ addBugList ai' (BS.lines bugS)
+    let (rawBugs, ai'') = {-# SCC "rawBugs" #-} first (M.fromList . s) $ addBugList ai' (BS.lines bugS)
         addBugList finalAi [] = ([], finalAi)
         addBugList ai (l:ls) = if BS.null l 
                                then addBugList ai ls
@@ -152,20 +169,25 @@ parseSuite config ai dir = do
 
     hPutStrLn stderr $ "Done reading input files, " ++ show (IxS.size sourceAtoms) ++
                        " sources, " ++ show (IxS.size binaries) ++ " binaries."
-    return $ (SuiteInfo
-        sourceAtoms
-        binaries
-        atoms
-        sourceNames
-        binaryNames
-        builds
-        builtBy
-        depends
-        provides
-        conflicts
-        breaks
-        newerSources
-        bugs
+    return
+        ( SuiteInfo
+            sourceAtoms
+            binaries
+            smooths
+            atoms
+            sourceNames
+            binaryNames
+            builds
+            buildsArches
+            newerSources
+            bugs
+            builtBy
+        , RawPackageInfo
+            binaryNames
+            depends
+            provides
+            conflicts
+            breaks
         , ai'')
 
 parseGeneralInfo :: Config -> AtomIndex -> IO GeneralInfo
@@ -181,7 +203,7 @@ parseGeneralInfo config ai = do
     -- of a source package, we remove it. Removing the index of something that
     -- is not a source pacackge is a noop.
     ages <- maybe id (M.delete . (\(Index i) -> Index i)) (migrateThisI config) <$>
-        parseAgeFile (dir config </> "testing" </> "Dates") ai
+        parseAgeFile config  ai
 --    ages `deepseq` return ()
 
 
@@ -193,7 +215,7 @@ parseUrgencyFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Urgency)
 parseUrgencyFile file ai = do
     urgencyS <- BS.readFile file
 
-    return $ M.fromList [ (srcI, urgency) | 
+    return $ M.fromList $ s [ (srcI, urgency) | 
             line <- BS.lines urgencyS,
             not (BS.null line),
             let [pkg,version,urgencyS] = BS.words line,
@@ -203,21 +225,25 @@ parseUrgencyFile file ai = do
             let urgency = Urgency urgencyS
             ]
 
-parseAgeFile :: FilePath -> AtomIndex -> IO (M.Map SrcI Age)
-parseAgeFile file ai = do
-    dateS <- BS.readFile file
+parseAgeFile :: Config -> AtomIndex -> IO (M.Map SrcI Age)
+parseAgeFile config ai = do
+    let filename = dir config </> "testing" </> "Dates"
+    dateS <- BS.readFile filename
 
     -- Timeszone?
-    now <- utctDay <$> getCurrentTime
+    now <- case True of -- whether to use file timestamp for "now"
+        True -> utctDay . fromClockTime <$> getModificationTime filename
+        False -> utctDay <$> getCurrentTime
+    let now' = offset config `addDays`now
     let epochDay = fromGregorian 1970 1 1
-    return $ M.fromList [ (srcI, Age age) | 
+    return $ M.fromList $ s [ (srcI, Age age) | 
             line <- BS.lines dateS,
             not (BS.null line),
             let [pkg,version,dayS] = BS.words line,
             not ("upl" `BS.isPrefixOf` version),
             let src = Source (SourceName pkg) (DebianVersion version),
             Just srcI <- [ai `indexSrc` src],
-            let age = {-# SCC "ageCalc" #-} fromIntegral $ now `diffDays` (int dayS `addDays` epochDay)
+            let age = {-# SCC "ageCalc" #-} fromIntegral $ now' `diffDays` (int dayS `addDays` epochDay)
             ]
 
 parseDependency :: BS.ByteString -> Dependency
@@ -261,7 +287,7 @@ parseArchReq :: BS.ByteString -> ArchitectureReq
 parseArchReq str | BS.null str = error "Empty Architecture requirement"
 parseArchReq str = arches `deepseq` t arches
  where t = if BS.head str == '!' then ArchExcept else ArchOnly
-       arches = fmap Arch $
+       arches = fmap archFromByteString $
                 filter (not . BS.null) $
                 BS.splitWith (\c -> isSpace c || c `elem` ",!") $
                 str
@@ -285,3 +311,6 @@ set2MapNonEmpty f s = IxM.fromDistinctAscList [ (k, v) | k <- IxS.toAscList s, l
 
 set2Map :: (Index a -> b) -> IxS.Set a -> IxM.Map a b
 set2Map f s = IxM.fromDistinctAscList [ (k, f k) | k <- IxS.toAscList s ]
+
+s :: NFData a => [a] -> [a]
+s = withStrategy $ seqList rdeepseq

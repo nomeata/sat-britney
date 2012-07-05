@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards, Rank2Types, ImpredicativeTypes, TupleSections #-}
 -- |
 -- Module: TransRules
 -- Copyright: (c) 2011 Joachim Breitner
@@ -6,113 +7,138 @@
 module TransRules where
 
 import Data.List
-import Data.Map ((!))
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
 import qualified Data.Map as M
 import Data.Functor
 import Data.Function
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), first)
+import Control.Monad.State
+import Debug.Trace
+import Safe
+import GHC.Exts (build)
 
+import ParseHints
+import Indices
 import Types
+import AtomIndex
 import LitSat
+import PrettyPrint
+import qualified Data.Set as S
 import qualified IndexSet as IxS
 import qualified IndexMap as IxM
 
-thinSuite config ai suite general = SuiteInfo
-    { sources = sources'
-    , binaries = binaries'
-    , atoms = atoms'
-    , sourceNames = M.map (filter (`IxS.member` sources')) $ sourceNames suite
-    , binaryNames = M.map (filter (`IxS.member` binaries')) $ binaryNames suite
-    , builds = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $ builds suite
-    , builtBy = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ builtBy suite
-    , depends = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ depends suite
-    , provides = M.map (filter (`IxS.member` binaries')) $ provides suite
-    , conflicts = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ conflicts suite
-    , breaks = IxM.filterWithKey (\k _ -> k `IxS.member` binaries') $ breaks suite
-    , newerSources = IxM.filterWithKey (\k _ -> k `IxS.member` sources') $
-                     IxM.map (filter (`IxS.member` sources')) $ newerSources suite
-    , bugs = IxM.filterWithKey (\k _ -> k `IxS.member` atoms') $ bugs suite
-    }
-  where sources' = IxS.filter (not . isTooYoung) $ sources suite
-        binaries' = IxS.filter ((`IxS.member` sources') . (builtBy suite IxM.!)) $ binaries suite
-        atoms' = IxS.generalize sources' `IxS.union` IxS.generalize binaries'
 
-        isTooYoung src = case src `M.lookup` ages general of
-            Just age -> let minAge = fromMaybe (defaultMinAge config) $
-                                urgencies general `combine` minAges config $ src
-                        in  age <= minAge
-            Nothing -> False
+-- Sources and binaries that will not be in testing, in any case. Can be used
+-- to skip certain things, most notable generating the dependency information.
+findNonCandidates :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults
+    -> Producer (SrcI, String)
+findNonCandidates config ai unstable testing general builtBy hr f x =
+    (toProducer $ outdated ++ missingArch ++ obsolete ++ tooyoung ++ blocked ++ removed ++ isMoreBuggy) f x
+  where tooyoung = 
+            -- packages need to be old enough
+            [ (src, "it is " ++ show age ++ " days old, needs " ++ show minAge) |
+                src <- IxS.toList sourcesOnlyUnstable,
+                Just age <- [src `M.lookup` ages general],
+                let minAge | src `IxS.member` sourcesNew 
+                           = defaultMinAge config
+                           | otherwise
+                           = fromMaybe (defaultMinAge config) $
+                             urgencies general `combine` minAges config $ src,
+                age < minAge
+            ] 
+        outdated = 
+            -- release architectures ought not to be out of date
+            [ (newer, "is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
+                binI <- IxS.toList (binaries unstable),
+                let srcI = builtBy IxM.! binI,
+                -- TODO: only release architecture here
+                newer <- newerSources unstable IxM.! srcI,
+                newer `IxS.notMember` sources testing
+            ]
+        missingArch = 
+            -- release architectures ought not be missing in unstable
+            [ (srcIu, "is out of date: " ++ show a ++ " not built in unstable") |
+                (srcIt, archSt) <- IxM.toList (buildsArches testing),
+                let (Source pkg vt) = ai `lookupSrc` srcIt,
+                srcIu <- fromMaybe [] $ M.lookup pkg (sourceNames unstable),
+                srcIu `IxS.notMember` sources testing,
+                let archSu = fromMaybe S.empty $ IxM.lookup srcIu (buildsArches unstable),
+                a <- S.toList $ archSt S.\\ archSu
+            ]
+        obsolete = 
+            -- never add a source package to testing that is already superceded
+            [ (src, "it is already superceded by " ++ show (ai `lookupSrc` s)) |
+                src <- IxS.toList sourcesOnlyUnstable,
+                (s:_) <- [newerSources unstable IxM.! src]
+            ]
+        blocked = 
+            [ (src, "is blocked by the release team") |
+                src <- IxS.toList (blockedSources hr)
+            ]
+        removed = 
+            [ (src, "is removed by the release team") |
+                src <- IxS.toList (removedSources hr),
+                src `IxS.notMember` sources testing
+            ]
+        isMoreBuggy = 
+            [ (srcI, "has new bug " ++ show (ai `lookupBug` bugI)) |
+                (aI,bugIs) <- IxM.toList $ bugs unstable,
+                BinAtom (Binary pkg _ arch) <- return $ ai `lookupAtom` aI,
+                let inTesting = [ bugI' |
+                        Just (binI's) <- return $ M.lookup (pkg, ST.fromMaybe (archForAll config) arch) $ binaryNames testing,
+                        binI' <- binI's,
+                        bugI'st <- return $ fromMaybe [] $ IxM.lookup (genIndex binI') $ bugs testing,
+                        bugI'su <- return $ fromMaybe [] $ IxM.lookup (genIndex binI') $ bugs unstable,
+                        bugI' <- bugI'st ++ bugI'su
+                        ],
+                bugI <- bugIs,
+                bugI `notElem` inTesting,
+                let srcI = builtBy IxM.! aI
+            ]
+            
 
-transitionRules config ai unstable testing general =
-    ( keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ needsBinary ++ releaseSync ++ completeBuild ++ outdated ++ obsolete ++ tooyoung ++ buggy
-    , conflictClauses ++ dependencies
-    , desired , unwanted )
-  where relaxable = conflictClauses ++ dependencies
-        keepSrc = 
-            -- A source that exists both in unstable and in testing has to stay in testing
-            {-# SCC "keepSrc" #-}
+        sourcesOnlyUnstable = IxS.difference (sources unstable) (sources testing)
+        sourcesNew = IxS.fromList $ concat $ M.elems $ M.difference (sourceNames unstable) (sourceNames testing)
+
+-- Binaries that are in testing and will stay there.
+-- TODO: Force removals
+findUnmodified :: Config -> SuiteInfo -> SuiteInfo -> IxS.Set Source -> IxS.Set Binary
+findUnmodified config unstable testing nonCandidates =
+    binaries testing `IxS.intersection` binaries unstable
+  where nonCandidateBins = {-# SCC "nonCandidateBins" #-} IxS.fromList $
+            concatMap (builds unstable IxM.!) $
+            IxS.toList nonCandidates
+
+transitionRules :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> BuiltBy -> HintResults -> Producer (SrcI, String)
+     -> Producer (Clause AtomI)
+transitionRules config ai unstable testing general builtBy hr nc f x = (toProducer $
+    keepSrc ++ keepBin ++ uniqueBin ++ needsSource ++ binNMUsync ++ newSourceSync ++ completeBuild ++ nonCandidates ++ buggy ) f x
+  where keepSrc = 
+            -- A source that exists both in unstable and in testing has to stay
+            -- in testing, unless a remove hint is present
             [OneOf atoms ("source " ++ show name ++ " was in testing before.") |
                 (name,pkgs) <- M.toList sourcesBoth,
+                all (\src -> src `IxS.notMember` removedSources hr) pkgs,
                 let atoms = map genIndex (nub pkgs)
             ]
         keepBin = 
-            {-# SCC "keepBin" #-}
-            -- A binary that exists both in unstable and in testing has to stay in testing
+            -- A binary that exists both in unstable and in testing has to stay
+            -- in testing, unless a remove hint is present
             [OneOf atoms ("binary " ++ show name ++ " on " ++ show arch ++ " was in testing before.") |
                 ((name,arch),pkgs) <- M.toList binariesBoth,
+                all (\pkg -> builtBy IxM.! pkg `IxS.notMember` removedSources hr) pkgs,
                 let atoms = map genIndex (nub pkgs)
-            ]
+            ] 
         uniqueBin = 
-            {-# SCC "uniqueBin" #-}
             -- At most one binary per name and architecture
             [AtMostOne (nub pkgs) ("at most version of " ++ show name ++ " ought to be unique on " ++ show arch) |
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
             ]
-        dependencies =
-            {-# SCC "dependencies" #-}
-            -- Dependencies
-            [Implies (genIndex binI) deps ("the package depends on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList dependsUnion,
-                let Binary _ _ arch = ai `lookupBin` binI,
-                (disjunction, reason) <- depends,
-                let deps = map genIndex . nub . concatMap ({-# SCC "resolve" #-} resolve arch) $ disjunction
-            ]
-        conflictClauses =
-            {-# SCC "conflictClauses" #-}
-            -- Conflicts
-            [NotBoth (genIndex binI) (genIndex confl) ("the package conflicts with \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList conflictsUnion,
-                let Binary _ _ arch = ai `lookupBin` binI,
-                (disjunction, reason) <- depends,
-                rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
-                hasUpperBound vr,
-                confl <- nub (resolve arch rel)
-            ] ++
-            [NotBoth (genIndex binI) (genIndex confl) ("the package breaks on \"" ++ BS.unpack reason ++ "\".") |
-                (binI,depends) <- IxM.toList breaksUnion,
-                let Binary _ _ arch = ai `lookupBin` binI,
-                (disjunction, reason) <- depends,
-                rel@(DepRel _ (ST.Just vr) _ ) <- disjunction,
-                -- hasUpperBound vr,
-                confl <- nub (resolve arch rel)
-            ]
-        releaseSync = 
-            {-# SCC "releaseSync" #-}
-            -- release architectures ought to all migrate
-            [Implies (genIndex src) [bin] ("release architectures ought to migrate completely") |
-                (src, bins) <- IxM.toList buildsOnlyUnstable,
-                -- BEWARE: If more than one binary with the same name built by the same
-                -- source on the same architecture exists in unstable, this will
-                -- contradict with the unique binary package rule.
-                bin <- genIndex <$> nub bins
-            ] 
-        completeBuild = 
-            {-# SCC "completeBuild" #-}
+        binNMUsync = 
             -- For each source, keep all binary packages from unstable on an
             -- architecture together. Assumes that the one-binary-package
             -- condition is fulfilled in unstable
@@ -129,89 +155,69 @@ transitionRules config ai unstable testing general =
                 length binGroup > 1,
                 let binIs = map (genIndex . fst) binGroup
             ]
-
-        tooyoung = 
-            {-# SCC "tooyoung" #-}
-            -- packages need to be old enough
-            [Not (genIndex src) ("it is " ++ show age ++ " days old, needs " ++ show minAge) |
-                src <- IxM.keys buildsOnlyUnstable,
-                Just age <- [src `M.lookup` ages general],
-                let minAge = fromMaybe (defaultMinAge config) $
-                             urgencies general `combine` minAges config $ src,
-                age <= minAge
-            ] 
+        completeBuild = 
+            -- For each source and each arch each binary name built by the
+            -- source, depend on all binaries with that name. There is exactly
+            -- one such binary, unless there are binNMUs.
+            [Implies (genIndex src) binIs ("all binaries stay with the source") |
+                src <- IxS.toList (sources testing),
+                let bins = IxS.toList $ IxS.fromList $
+                        fromMaybe [] (IxM.lookup src (builds unstable)) ++
+                        fromMaybe [] (IxM.lookup src (builds testing)),
+                binsPerArchAndName <-
+                    map (map fst) .
+                    groupBy ((==) `on` (binArch &&& binName) . snd) .
+                    sortBy  (compare `on` (binArch &&& binName) . snd) .
+                    map (id &&& (ai `lookupBin`)) $ bins,
+                -- Do not force this if there is not a binary in testing already.
+                any (`IxS.member` binaries testing) binsPerArchAndName,
+                let binIs = map genIndex binsPerArchAndName
+            ]
+        newSourceSync =
+            [Implies (genIndex src) binIs ("all binaries stay with the source") |
+                (src, bins) <- IxM.toList (builds unstable),
+                src `IxS.notMember` sources testing,
+                -- This might be redundant, as all these sets will be
+                -- singletons anyways
+                binsPerArchAndName <-
+                    map (map fst) .
+                    groupBy ((==) `on` (binArch &&& binName) . snd) .
+                    sortBy  (compare `on` (binArch &&& binName) . snd) .
+                    map (id &&& (ai `lookupBin`)) $ bins,
+                let binIs = map genIndex binsPerArchAndName
+            ]
         needsSource = 
-            {-# SCC "needsSource" #-}
             -- a package needs its source
-            [Implies (genIndex bin) [genIndex src] ("of the DFSG") |
-                (bin, src) <- IxM.toList builtByUnion
+            [Implies (genIndex bin) [genIndex src] "of the DFSG" |
+                (bin, src) <- IxM.toList builtBy,
+                bin `IxS.notMember` smoothBinaries testing 
+            ] ++
+            -- Smooth upgrades need their source, or a newer version thereof
+            [Implies (genIndex bin) (map genIndex srcIs) "of the DFSG (smooth upgrade)" |
+                (bin, srcI) <- IxM.toList builtBy,
+                bin `IxS.member` smoothBinaries testing,
+                let (Source pkg _) = ai `lookupSrc` srcI,
+                let srcIs = fromMaybe [] $ M.lookup pkg sourcesUnion
             ]
-        needsBinary =
-            {-# SCC "needsBinary" #-}
-            -- a source needs a binary
-            [Implies (genIndex src) bins ("it were useless otherwise") |
-                (src, binIs) <- IxM.toList buildsUnion,
-                let bins = map genIndex (nub binIs)
-            ]
-        outdated = 
-            {-# SCC "outdated" #-}
-            -- release architectures ought not to be out of date
-            [Not (genIndex newer) ("is out of date: " ++ show (ai `lookupBin` binI) ++ " exists in unstable") |
-                (binI, src) <- IxM.toList (builtBy unstable),
-                -- TODO: only release architecture here
-                newer <- newerSources unstable IxM.! src,
-                newer `IxS.notMember` sources testing
-            ]
-        obsolete = 
-            {-# SCC "obsolete" #-}
-            -- never add a source package to testing that is already superceded
-            [Not (genIndex src) ("it is already superceded by " ++ show (ai `lookupSrc` s)) |
-                (src, bins) <- IxM.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable IxM.! src]
+        nonCandidates =
+            [ Not (genIndex atom) reason
+            | (atom, reason) <- build nc
             ]
         buggy = 
-            {-# SCC "buggy1" #-}
             -- no new RC bugs
             [Implies atom [bug] ("it has this bug") |
                 (atom, bugs) <- IxM.toList bugsUnion,
                 bug <- genIndex <$> nub bugs
             ] ++
-            {-# SCC "buggy2" #-}
             [Not atom ("it was not in testing before") |
                 
                 atom <- genIndex <$> IxS.toList forbiddenBugs
             ]
 
-        -- Some duplication wrt above code
-        obsoleteSource = IxS.fromList [ src |
-                (src, bins) <- IxM.toList buildsOnlyUnstable,
-                (s:_) <- [newerSources unstable IxM.! src]
-            ]
-        youngSource = IxS.fromList [ src |
-                src <- IxM.keys buildsOnlyUnstable,
-                Just age <- [src `M.lookup` ages general],
-                let minAge = fromMaybe (defaultMinAge config) $
-                             urgencies general `combine` minAges config $ src,
-                age <= minAge
-            ]
-
-        desired  = fmap genIndex $ IxS.toList $
-            sources unstable `IxS.difference` sources testing
-                             `IxS.difference` obsoleteSource
-                             `IxS.difference` youngSource
-        unwanted = [] -- fmap genIndex $ IxS.toList $ sources testing `IxS.difference` sources unstable
-
-        sourcesBoth = {-# SCC "sourcesBoth" #-} M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
-        binariesBoth = {-# SCC "binariesBoth" #-} M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
-        binariesUnion = {-# SCC "binariesUnion" #-} M.unionWith (++) (binaryNames unstable) (binaryNames testing)
-        providesUnion = {-# SCC "providesUnion" #-} M.unionWith (++) (provides unstable) (provides testing)
+        sourcesBoth = M.intersectionWith (++) (sourceNames unstable) (sourceNames testing)
+        sourcesUnion = M.unionWith (++) (sourceNames unstable) (sourceNames testing)
+        binariesBoth =  M.intersectionWith (++) (binaryNames unstable) (binaryNames testing)
         -- We assume that the dependency information is the same, even from different suites
-        dependsUnion = {-# SCC "dependsUnion" #-} IxM.union (depends unstable) (depends testing)
-        conflictsUnion = {-# SCC "conflictsUnion" #-} IxM.union (conflicts unstable) (conflicts testing)
-        breaksUnion = {-# SCC "breaksUnion" #-} IxM.union (breaks unstable) (breaks testing)
-
-        builtByUnion = {-# SCC "builtByUnion" #-} IxM.union (builtBy unstable) (builtBy testing)
-        buildsUnion = {-# SCC "buildsUnion" #-} IxM.unionWith (++) (builds unstable) (builds testing)
 
         bugsUnion = {-# SCC "bugsUnion" #-} IxM.unionWith (++) (bugs unstable) (bugs testing)
 
@@ -226,43 +232,15 @@ transitionRules config ai unstable testing general =
             bug <- IxM.findWithDefault [] atom bugsUnion ]
         forbiddenBugs = {-# SCC "forbiddenBugs" #-} bugsInUnstable `IxS.difference` bugsInTesting
 
-        buildsOnlyUnstable = {-# SCC "buildsOnlyUnstable" #-} IxM.difference (builds unstable) (builds testing)
-        atomsOnlyUnstable = {-# SCC "atomsOnlyUnstable" #-} IxS.difference (atoms unstable) (atoms testing)
+desiredAtoms :: SuiteInfo -> SuiteInfo -> HintResults -> Producer AtomI
+desiredAtoms unstable testing hr f x = (toProducer $
+    fmap genIndex $ IxS.toList $ binaries unstable `IxS.difference` binaries testing) f x
 
-        resolve :: ST.Maybe Arch -> DepRel -> [BinI]
-        resolve mbArch (DepRel name mbVerReq mbArchReq)
-            | checkArchReq mbArchReq = 
-                [ binI |
-                    binI <- M.findWithDefault [] (name, arch) binariesUnion,
-                    let Binary pkg version _ = ai `lookupBin` binI,
-                    checkVersionReq mbVerReq (Just version)
-                ] ++ 
-                if ST.isJust mbVerReq then [] else 
-                [ binI |
-                    binI <- M.findWithDefault [] (name, arch) providesUnion
-                ]
-            | otherwise = []
-          where arch = ST.fromMaybe (archForAll config) mbArch 
-                checkArchReq ST.Nothing = True
-                checkArchReq (ST.Just (ArchOnly arches)) = arch `elem` arches
-                checkArchReq (ST.Just (ArchExcept arches)) = arch `notElem` arches
-
--- |Check if a version number satisfies a version requirement.
-checkVersionReq :: ST.Maybe VersionReq -> Maybe DebianVersion -> Bool
-checkVersionReq ST.Nothing _ = True
-checkVersionReq _ Nothing = False
-checkVersionReq (ST.Just (SLT v1)) (Just v2) =
-    v2 `cmpDebianVersion` v1 == LT
-checkVersionReq (ST.Just (LTE v1)) (Just v2) =
-    v2 `cmpDebianVersion` v1 <= EQ
-checkVersionReq (ST.Just (EEQ v1)) (Just v2) =
-    v2 `cmpDebianVersion` v1 == EQ
-checkVersionReq (ST.Just (GRE v1)) (Just v2) =
-    v2 `cmpDebianVersion` v1 >= EQ
-checkVersionReq (ST.Just (SGR v1)) (Just v2) =
-    v2 `cmpDebianVersion` v1 == GT
-
-    
+unwantedAtoms :: SuiteInfo -> SuiteInfo -> HintResults -> Producer AtomI
+unwantedAtoms unstable testing hr f x = (toProducer $ 
+    (fmap genIndex $ IxS.toList $ removedSources hr) ++
+    (fmap genIndex $ IxS.toList $ binaries testing `IxS.difference` binaries unstable)
+    ) f x
 
 combine :: (Ord a, Ord b) => M.Map a b -> M.Map b c -> a -> Maybe c
 combine m1 m2 x = (x `M.lookup` m1) >>= (`M.lookup` m2)

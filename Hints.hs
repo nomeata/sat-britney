@@ -11,21 +11,28 @@ import qualified Data.Strict as ST
 import qualified Data.ByteString.Lazy.Char8 as L
 
 import Types
+import Arches
 import Indices
+import AtomIndex
+import Difference
 import qualified IndexMap as IxM
 import qualified IndexSet as IxS
 
-generateHints :: AtomIndex -> SuiteInfo -> SuiteInfo -> S.Set AtomI -> L.ByteString
-generateHints ai testing unstable newAtoms =
-    (if length hintStrings == 1 then ("# " `L.append`) else id) .
-    (`L.append` "\n" ) . ("easy " `L.append`) . L.unwords $ hintStrings
-  where hintStrings = 
+generateHints :: AtomIndex -> SuiteInfo -> IxM.Map Binary SrcI -> S.Set AtomI -> L.ByteString
+generateHints ai testing builtBy newAtoms = comment (format hintStrings)
+  where comment hint = case length hintStrings of
+            0 -> "# empty hint when trying to express:\n" `L.append`
+                    L.unlines (map ("#   " `L.append`) (L.lines (suiteDifference ai testing newAtoms)))
+            1 -> "#" `L.append` hint
+            _ -> hint
+        format xs = "easy " `L.append` L.unwords xs `L.append` "\n" 
+        hintStrings = 
             [ L.fromChunks [srcName , "/", srcVersion ]
             | srcI <- IxS.toList addedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ] ++ 
-            [ L.fromChunks [srcName , "/", arch, "/", srcVersion ]
-            | (srcI,Arch arch) <- S.toList binNMUedSources
+            [ L.fromChunks [srcName , "/", archToByteString arch, "/", srcVersion ]
+            | (srcI,arch) <- S.toList binNMUedSources
             , let (Source (SourceName srcName) (DebianVersion srcVersion)) = ai `lookupSrc` srcI
             ]
         (newSourcesIs, newBinariesIs, _) = splitAtomIs ai newAtoms
@@ -35,7 +42,7 @@ generateHints ai testing unstable newAtoms =
         binNMUedSources = S.fromList 
             [ (srcI,arch)
             | binI <- IxS.toList addedBinaries
-            , let srcI = builtBy unstable IxM.! binI 
+            , let srcI = builtBy IxM.! binI 
             , srcI `IxS.notMember` addedSources
             , Binary _ _ (ST.Just arch) <- [ ai `lookupBin` binI]
             ]
@@ -46,3 +53,4 @@ splitAtomIs ai = (\(l1,l2,l3) -> (IxS.fromList l1, IxS.fromList l2, IxS.fromList
             (SrcAtom x) -> (Index i:l1,l2,l3)
             (BinAtom x) -> (l1,Index i:l2,l3)
             (BugAtom x) -> (l1,l2,Index i:l3)
+            _           -> (l1,l2,l3)
