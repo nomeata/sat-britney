@@ -355,8 +355,9 @@ runBritney config = do
                 if transSize config == ManySmall
                 then do
                     hPutStrLn h $ "# Full hint:"
+                    L.hPut h $ "# "
                     L.hPut h $ generateHints aiD testing builtBy newAtomIs
-                    hPutStrLn h $ "# Small hints:"
+                    hPutStrLn h $ "# Individual hints:"
                     forM_ smallTransitions $ \thisTransitionNewAtomsIs-> 
                         L.hPut h $ generateHints aiD testing builtBy thisTransitionNewAtomsIs
                     hFlush h
