@@ -94,6 +94,7 @@ readHintLine allowed line =
         cmd:args | cmd `notElem` allowed -> []
                  | otherwise -> parseHint cmd args
 
+parseHint "unblock" args = map Unblock $ mapMaybe parseHintSpec args
 parseHint "block" args = map Block $ mapMaybe parseHintSpec args
 parseHint "block-udeb" args = map Block $ mapMaybe parseHintSpec args
 parseHint "remove" args = map Remove $ mapMaybe parseHintSpec args
@@ -113,7 +114,14 @@ data HintResults = HintResults {
 
 processHints :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> [Hint] -> HintResults
 processHints config ai unstable testing general hints = HintResults {..}
-  where blockedSources = IxS.filter isBlockedSource $ sources unstable `IxS.difference` sources testing
+  where blockedSources = IxS.filter isReallyBlockedSource $ sources unstable `IxS.difference` sources testing
+        isReallyBlockedSource srcI = isBlockedSource srcI && not (isUnblockedSource srcI)
+
+        isUnblockedSource srcI = foldl' (isUnblockedBy (ai `lookupSrc` srcI)) False hints
+        isUnblockedBy src True _ = True
+        isUnblockedBy src False (Unblock hintSpec) = hintSpecApplies hintSpec src
+        isUnblockedBy src b _ = b
+
         isBlockedSource srcI = foldl' (isBlockedBy (ai `lookupSrc` srcI)) False hints
         isBlockedBy src True _ = True
         isBlockedBy src False (Block hintSpec) = hintSpecApplies hintSpec src
