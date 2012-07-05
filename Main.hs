@@ -51,7 +51,7 @@ minAgeTable = M.fromList [
     (Urgency "medium", Age 5),
     (Urgency "high", Age 2),
     (Urgency "critical", Age 2),
-    (Urgency "emergency", Age 2)
+    (Urgency "emergency", Age 0)
     ]
 
 defaultConfig :: Config

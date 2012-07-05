@@ -46,7 +46,7 @@ findNonCandidates config ai unstable testing general builtBy hr f x =
                            | otherwise
                            = fromMaybe (defaultMinAge config) $
                              urgencies general `combine` minAges config $ src,
-                age <= minAge
+                age < minAge
             ] 
         outdated = 
             -- release architectures ought not to be out of date
