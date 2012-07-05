@@ -79,14 +79,14 @@ Failing test suite tests
 In the test suite at
 http://anonscm.debian.org/gitweb/?p=collab-maint/britney-tests.git;a=summary
 there are some tests that fail for known reasons in SAT-Britney. Here is an
-explanation of these (at 596358c05b64dc1c3c13aeceaa2ba04c41827642):
+explanation of these (at 4a909c8345d75e0b5b1005e0f95bc63440786089):
 
  * Some hints are not yet supported:
-   basic-block-arch-hint
    basic-force-hint
+ * No support for testing-proposed-updates:
    basic-tpu-approve-hint
-   basic-unblock-hint
-   basic-unblock-multiple-types
+ * Uninstallability trading is not supported:
+   basic-uninst-trade
 
 Successful hints since SAT-Britney went live:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
