@@ -66,9 +66,11 @@ data Hint = Easy [HintSpec]
           | Remove HintSpec
           | Force HintSpec
           | Block HintSpec
+          | BlockUdeb HintSpec
           | BlockAll
           | Approve HintSpec
           | Unblock HintSpec
+          | UnblockUdeb HintSpec
           | Urgent HintSpec
           | AgeDays Age [HintSpec]
   deriving (Show, Eq, Ord)
@@ -95,8 +97,9 @@ readHintLine allowed line =
                  | otherwise -> parseHint cmd args
 
 parseHint "unblock" args = map Unblock $ mapMaybe parseHintSpec args
+parseHint "unblock-udeb" args = map UnblockUdeb $ mapMaybe parseHintSpec args
 parseHint "block" args = map Block $ mapMaybe parseHintSpec args
-parseHint "block-udeb" args = map Block $ mapMaybe parseHintSpec args
+parseHint "block-udeb" args = map BlockUdeb $ mapMaybe parseHintSpec args
 parseHint "remove" args = map Remove $ mapMaybe parseHintSpec args
 parseHint _       _    = []
 
@@ -115,7 +118,8 @@ data HintResults = HintResults {
 processHints :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> [Hint] -> HintResults
 processHints config ai unstable testing general hints = HintResults {..}
   where blockedSources = IxS.filter isReallyBlockedSource $ sources unstable `IxS.difference` sources testing
-        isReallyBlockedSource srcI = isBlockedSource srcI && not (isUnblockedSource srcI)
+        isReallyBlockedSource srcI = (isBlockedSource srcI && not (isUnblockedSource srcI))
+            || (isBlockedUdebSource srcI && not (isUnblockedUdebSource srcI))
 
         isUnblockedSource srcI = foldl' (isUnblockedBy (ai `lookupSrc` srcI)) False hints
         isUnblockedBy src True _ = True
@@ -126,6 +130,16 @@ processHints config ai unstable testing general hints = HintResults {..}
         isBlockedBy src True _ = True
         isBlockedBy src False (Block hintSpec) = hintSpecApplies hintSpec src
         isBlockedBy src b _ = b
+
+        isUnblockedUdebSource srcI = foldl' (isUnblockedUdebBy (ai `lookupSrc` srcI)) False hints
+        isUnblockedUdebBy src True _ = True
+        isUnblockedUdebBy src False (UnblockUdeb hintSpec) = hintSpecApplies hintSpec src
+        isUnblockedUdebBy src b _ = b
+
+        isBlockedUdebSource srcI = foldl' (isBlockedUdebBy (ai `lookupSrc` srcI)) False hints
+        isBlockedUdebBy src True _ = True
+        isBlockedUdebBy src False (BlockUdeb hintSpec) = hintSpecApplies hintSpec src
+        isBlockedUdebBy src b _ = b
 
         removedSources = IxS.filter isRemovedSource $ sources unstable `IxS.union` sources testing
         isRemovedSource srcI = foldl' (isRemovedBy (ai `lookupSrc` srcI)) False hints
