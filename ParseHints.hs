@@ -101,6 +101,7 @@ parseHint "unblock-udeb" args = map UnblockUdeb $ mapMaybe parseHintSpec args
 parseHint "block" args = map Block $ mapMaybe parseHintSpec args
 parseHint "block-udeb" args = map BlockUdeb $ mapMaybe parseHintSpec args
 parseHint "remove" args = map Remove $ mapMaybe parseHintSpec args
+parseHint "block-all" ["source"] = [BlockAll]
 parseHint _       _    = []
 
 parseHintSpec src = case splitOn "/" src of
@@ -118,8 +119,11 @@ data HintResults = HintResults {
 processHints :: Config -> AtomIndex -> SuiteInfo -> SuiteInfo -> GeneralInfo -> [Hint] -> HintResults
 processHints config ai unstable testing general hints = HintResults {..}
   where blockedSources = IxS.filter isReallyBlockedSource $ sources unstable `IxS.difference` sources testing
-        isReallyBlockedSource srcI = (isBlockedSource srcI && not (isUnblockedSource srcI))
+        isReallyBlockedSource srcI =
+            ((allBlocked || isBlockedSource srcI) && not (isUnblockedSource srcI))
             || (isBlockedUdebSource srcI && not (isUnblockedUdebSource srcI))
+
+        allBlocked = BlockAll `elem` hints
 
         isUnblockedSource srcI = foldl' (isUnblockedBy (ai `lookupSrc` srcI)) False hints
         isUnblockedBy src True _ = True
