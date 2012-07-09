@@ -83,7 +83,8 @@ readHintFile :: FilePath -> (String, [String]) -> IO [Hint]
 readHintFile dir (file,allowed) =
     do ex <- doesFileExist (dir </> file)
        if ex
-         then withFile (dir </> file) ReadMode $ \h -> do
+         then do
+            h <- openFile (dir </> file) ReadMode
             hSetEncoding h char8
             concatMap (readHintLine allowed) . untilFinished . lines <$> hGetContents h
          else return []
