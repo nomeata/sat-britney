@@ -68,7 +68,7 @@ clause2CNF c@(Not a _) = toProducer
 cnf2Clauses :: Producer (Clause AtomI) -> CNF -> Producer (Clause AtomI)
 cnf2Clauses clauses conj = toProducer $ filter check $ build clauses
   where check c = any (`S.member` conjS) $ map Z.sort $ build (clause2CNF c)
-        conjS = S.fromList $ V.toList conj
+        conjS = S.fromList $ map Z.sort $ V.toList conj
 
 runClauseSAT :: AtomI -> Producer AtomI -> Producer AtomI -> SATProb -> IO (Either CNF (S.Set AtomI))
 runClauseSAT mi desired unwanted sp = do
