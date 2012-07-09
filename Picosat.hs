@@ -294,7 +294,7 @@ runPMAXSolver sp = do
         Nothing -> return Nothing
 
 runMSUnCore :: SATProb -> IO (Maybe [Int])
-runMSUnCore = runAPMAXSolver $ \filename ->  proc "./msuncore" ["-v","0",filename]
+runMSUnCore = runAPMAXSolver $ \filename ->  proc "./solvers/msuncore-2011606-linux64" ["-v","0",filename]
 
 runMiniMaxSat :: SATProb -> IO (Maybe [Int])
 runMiniMaxSat = runAPMAXSolver $ \filename ->  proc "./minimaxsat" ["-F=2",filename]
