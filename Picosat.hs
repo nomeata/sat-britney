@@ -111,8 +111,7 @@ formatCNFPMAX (SATProb {..}) = L.concat $
         topN = show (numRelaxable + 2)
         top = BS.pack (topN ++ " ")
         soft = BS.pack ("1 ")
-        prependEach a [] = []
-        prependEach a l = (a:) . intersperse a $ l
+        prependEach a = concatMap (\l -> [a, l])
 
 
 parseConj :: BS.ByteString -> Conj
