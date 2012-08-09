@@ -13,6 +13,7 @@ import Data.Char
 import Data.Functor
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Strict as ST
+import qualified System.IO.Strict as ST
 import qualified Data.Map as M
 import Debug.Trace
 
@@ -52,8 +53,10 @@ findUninstallablePackages config ai suite dir arch = do
 collectEdosOutput :: FilePath -> IO [(String, String, String)]
 collectEdosOutput file = do
     pkgFile <- openFile file ReadMode
-    (_, Just edosOut, _, _) <- createProcess $ (proc "edos-debcheck" ["-quiet", "-xml","-failures"]) { std_in = UseHandle pkgFile, std_out = CreatePipe }
-    Document _ _ root  _ <- xmlParse "edos output" <$> hGetContents edosOut
+    (_, Just edosOutH, _, pid) <- createProcess $ (proc "edos-debcheck" ["-quiet", "-xml","-failures"]) { std_in = UseHandle pkgFile, std_out = CreatePipe }
+    edosOut <- ST.hGetContents edosOutH
+    waitForProcess pid
+    let Document _ _ root  _ = xmlParse "edos output" edosOut
     -- How do you actually use this HaXmL? This can not be the correct way:
     let filter = concatMap ((attributed "package" `x` attributed "architecture" `x` attributed "version" `x` extracted (concat . mapMaybe fst . textlabelled (txt `o` children)) ) keep) . (elm `o` children)
     return $ map (\((((p,a),v),_),_) -> (p, a, v)) (filter (CElem root noPos))
