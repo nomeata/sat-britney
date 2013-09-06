@@ -1,30 +1,30 @@
-Package: bin-A
+Package: bin-a
 Version: 0.2+b1
-Source: src-A (0.2)
+Source: src-a (0.2)
 Architecture: i386
-Depends: bin-B, bin2-A
+Depends: bin-b, bin2-a
 
-Package: bin2-A
+Package: bin2-a
 Version: 0.2
 Architecture: all
-Source: src-A (0.2)
+Source: src-a (0.2)
 
-Package: bin3-A
+Package: bin3-a
 Version: 0.2
-Source: src-A
+Source: src-a
 Architecture: all
 
-Package: bin-renamed-B
+Package: bin-renamed-b
 Version: 0.2
-Source: src-B
+Source: src-b
 Architecture: i386
-Depends: bin3-A (>= 0.2)
-Provides: bin-B
+Depends: bin3-a (>= 0.2)
+Provides: bin-b
 
-Package: pkg-C
+Package: pkg-c
 Architecture: i386
 Version: 0.2
 
-Package: pkg-N
+Package: pkg-n
 Architecture: i386
 Version: 0.1

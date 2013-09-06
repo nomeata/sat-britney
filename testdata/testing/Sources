@@ -1,10 +1,10 @@
-Package: src-A
+Package: src-a
 Version: 0.1
 
-Package: src-B
+Package: src-b
 Version: 0.1
 
-Package: pkg-C
+Package: pkg-c
 Version: 0.1
 
 
