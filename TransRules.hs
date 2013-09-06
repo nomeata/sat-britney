@@ -133,7 +133,7 @@ transitionRules config ai unstable testing general builtBy hr nc f x = (toProduc
             ] 
         uniqueBin = 
             -- At most one binary per name and architecture
-            [AtMostOne (nub pkgs) ("at most version of " ++ show name ++ " ought to be unique on " ++ show arch) |
+            [AtMostOne (nub pkgs) ("the package " ++ show name ++ " ought to be unique on " ++ show arch) |
                 ((name,arch),pkgs') <- M.toList binariesBoth,
                 let pkgs = map genIndex (nub pkgs'),
                 length pkgs > 1
