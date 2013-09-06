@@ -96,6 +96,9 @@ opts =
     , Option "r" ["release-arches"]
       (ReqArg (\as config -> return (config { releaseArches = toArchList as })) "ARCH,...")
       "comma-separated list of arches to consider release critical.\nDefaults to all"
+    , Option "r" ["arch-all-arch"]
+      (ReqArg (\as config -> return (config { archForAll = archFromByteString (BS.pack as) })) "ARCH")
+      ("architecture to test arch all packages in.\nDefaults to" ++ show (archForAll defaultConfig))
     , Option "" ["clauses-unrelax"]
       (ReqArg (\d config -> openH d >>= \h -> return (config { clausesUnrelaxH = h })) "FILE")
       "print literate clauses before relaxation to this file"
